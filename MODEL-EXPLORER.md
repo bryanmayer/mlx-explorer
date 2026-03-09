@@ -146,28 +146,29 @@ required):
 
 ## Adapting to a New Project
 
-The scripts are intentionally generic. Minimal changes needed:
+All project-specific settings are in config blocks at the top of each R script.
+No changes are needed to `model-explorer.html`.
 
-1. **Path convention** — update `models_root` if your model output directory
-   is not `models/`. The phase inference regex (`^acute/`, `^rebound/`) can be
-   changed or removed.
+**`R/generate-explorer-data.R`**
 
-2. **Shrinkage tab RE list** — the shrinkage tab currently shows a hardcoded list
-   of random effect names. Edit the `reParams` array in the HTML to match your
-   model's omegas, or replace it with a dynamic union of all omegas found across
-   selected models.
+```r
+MODELS_SUBDIR      <- "models"       # subdirectory where .mlxtran projects are saved
+PHASE_PATTERNS     <- list(          # path prefix → phase label
+  phase1 = "^phase1/",               # set to list() to disable phase inference
+  phase2 = "^phase2/"
+)
+NOTES_EXCLUDE_PARAMS <- character(0) # params always fixed by design, omit from notes
+```
 
-3. **Y-axis label** — the individual fits plot is labelled "Viral load (log₁₀ copies/mL)".
-   Update the `y` label in `make_fits_plot()` in `generate-explorer-figures.R`.
+**`R/generate-explorer-figures.R`**
 
-4. **Sidebar footer** — the footer reads "acute phase · RV217 data". Update the
-   static string in `model-explorer.html`.
+```r
+MODELS_SUBDIR <- "models"                  # must match generate-explorer-data.R
+FITS_Y_LABEL  <- "Concentration (ng/mL)"  # y-axis label on individual fits plot
+```
 
-5. **Sort default** — defaults to BICc. Change `sortMetric` initial state in
-   `ModelExplorer` if BIC or AIC is preferred.
-
-Everything else (parameter tables, comparison, figures) is fully data-driven and
-requires no changes.
+Everything else (parameter tables, comparison charts, shrinkage heatmap, figures)
+is fully data-driven and requires no changes.
 
 ---
 
