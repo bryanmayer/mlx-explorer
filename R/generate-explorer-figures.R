@@ -270,24 +270,26 @@ for (i in seq_along(sort(pop_files))) {
   )
 }
 
-# ── Append into model-data.js ─────────────────────────────────────────────────
-# Appended to model-data.js (rather than a separate file) so the browser
-# doesn't need to load a second script — avoids stale-cache issues.
+# ── Inject MODEL_FIGURES inline into HTML ─────────────────────────────────────
+# Replaces the figures placeholder left by generate-explorer-data.R so the
+# HTML remains self-contained and works via file:// without a server.
 
-json_str <- toJSON(figures, auto_unbox = TRUE, na = "null", pretty = FALSE)
-out_path <- root("analysis", "model-data.js")
+json_str  <- toJSON(figures, auto_unbox = TRUE, na = "null", pretty = FALSE)
+html_path <- root("analysis", "model-explorer.html")
 
-# Append figures block to the existing model-data.js
-write(
-  c(
-    "",
-    "// Figures — appended by R/generate-explorer-figures.R",
-    glue("// Generated: {Sys.time()}"),
-    paste0("window.MODEL_FIGURES = ", json_str, ";")
-  ),
-  file = out_path,
-  append = TRUE
-)
-
-n <- length(figures)
-message(glue("Appended figures for {n} model(s) to analysis/model-data.js"))
+if (file.exists(html_path)) {
+  html         <- readLines(html_path, warn = FALSE)
+  placeholder  <- which(str_detect(html, "MODEL_FIGURES placeholder"))
+  if (length(placeholder) == 1) {
+    html[placeholder] <- paste0(
+      "  <script>window.MODEL_FIGURES = ", json_str, ";</script>"
+    )
+    writeLines(html, html_path)
+    n <- length(figures)
+    message(glue("Injected figures for {n} model(s) inline into model-explorer.html"))
+  } else {
+    message("Warning: MODEL_FIGURES placeholder not found in model-explorer.html")
+  }
+} else {
+  message("Warning: model-explorer.html not found")
+}
