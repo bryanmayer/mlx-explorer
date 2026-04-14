@@ -1,0 +1,66 @@
+<DATAFILE>
+
+[FILEINFO]
+file={path='../../../../../lixoft/monolix/monolix2024R1/demos/6.PK_models/6.2.multiple_routes/data/ivOral1_data.txt'}
+delimiter = tab
+header={ID, TIME, AMT, ADM, RATE, Y}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+AMT = {use=amount}
+ADM = {use=administration}
+RATE = {use=rate}
+Y = {use=observation, type=continuous}
+
+<MODEL>
+
+[INDIVIDUAL]
+input = {F_pop, omega_F, ka_pop, omega_ka, V_pop, omega_V, k_pop, omega_k}
+
+DEFINITION:
+F = {distribution=logitNormal, typical=F_pop, sd=omega_F}
+ka = {distribution=logNormal, typical=ka_pop, sd=omega_ka}
+V = {distribution=logNormal, typical=V_pop, sd=omega_V}
+k = {distribution=logNormal, typical=k_pop, sd=omega_k}
+
+[LONGITUDINAL]
+input = {b}
+
+file = '../../../../../lixoft/monolix/monolix2024R1/demos/6.PK_models/6.2.multiple_routes/model/ivOral1Macro_model.txt'
+
+DEFINITION:
+Y = {distribution=normal, prediction=Cc, errorModel=proportional(b)}
+
+<FIT>
+data = 'Y'
+model = Y
+
+<PARAMETER>
+F_pop = {value=0.5, method=MLE}
+V_pop = {value=10, method=MLE}
+b = {value=0.3, method=MLE}
+c = {value=1, method=FIXED}
+k_pop = {value=0.1, method=MLE}
+ka_pop = {value=1, method=MLE}
+omega_F = {value=1, method=MLE}
+omega_V = {value=1, method=MLE}
+omega_k = {value=1, method=MLE}
+omega_ka = {value=1, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = StochasticApproximation)
+logLikelihood(run = false,method = ImportanceSampling)
+
+[PLOTS]
+run = true
+plots = {indfits = {selected = true}, parameterdistribution = {selected = true}, obspred = {selected = true}, covariancemodeldiagnosis = {selected = true}, covariatemodeldiagnosis = {selected = true}, vpc = {selected = true}, residualsscatter = {selected = true}, residualsdistribution = {selected = true}, randomeffects = {selected = true}, saemresults = {selected = true}}
+
+[SETTINGS]
+GLOBAL:
+exportpath = 'ivOral1_project'
+

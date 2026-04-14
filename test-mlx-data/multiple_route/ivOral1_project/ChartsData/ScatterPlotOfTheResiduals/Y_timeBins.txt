@@ -1,0 +1,7 @@
+bins_values,split
+1,All
+11,All
+23,All
+35,All
+47,All
+57,All

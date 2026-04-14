@@ -1,0 +1,99 @@
+********************************************************************************
+*                          ivOral1_project.mlxtran                             *
+*                          April 14, 2026 at 10:11:51                          *
+*                          Monolix version : 2024R1                            *
+********************************************************************************
+
+
+ESTIMATION OF THE POPULATION PARAMETERS ________________________________________
+
+Fixed Effects ----------------------------     se_sa    rse(%)   P2.5_sa  P97.5_sa
+F_pop    :                           0.684    0.0208      3.05     0.642     0.724
+ka_pop   :                            1.03    0.0596      5.76     0.924      1.16
+V_pop    :                             9.4     0.359      3.82      8.72      10.1
+k_pop    :                          0.0991   0.00293      2.95    0.0935     0.105
+
+Standard Deviation of the Random Effects -
+omega_F  :                           0.464     0.087      18.8     0.324     0.664
+omega_ka :                           0.351    0.0587      16.7     0.255     0.484
+omega_V  :                           0.234    0.0279      11.9     0.186     0.295
+omega_k  :                           0.193    0.0219      11.3     0.155     0.241
+
+Error Model Parameters -------------------
+b        :                           0.153   0.00408      2.66     0.145     0.161
+
+Elapsed time (seconds):      2.1
+CPU time     (seconds):        9
+Exploratory phase iterations:      223 (Autostop)
+Smoothing phase iterations:        157 (Autostop)
+
+ _______________________________________________________________________________
+
+
+
+ESTIMATION OF THE INDIVIDUAL PARAMETERS ________________________________________
+
+
+Estimation of the individual parameters by Conditional Distribution ------------
+               min            Q1        median            Q3           max  shrinkage(%)
+F  :         0.487         0.639         0.684         0.727         0.791          30.9
+ka :          0.49         0.892          1.08          1.32          1.79            21
+V  :          5.79           8.5          9.67          10.9          14.4          15.4
+k  :        0.0696        0.0881           0.1         0.111         0.148          10.3
+
+Elapsed time (seconds):      0.6
+CPU time     (seconds):        3
+Iterations:      113 (Autostop)
+
+ -------------------------------------------------------------------------------
+
+
+Estimation of the individual parameters by Conditional Mode --------------------
+               min            Q1        median            Q3           max  shrinkage(%)
+F  :         0.486         0.622         0.681         0.719         0.785          30.1
+ka :         0.487         0.857          1.05          1.24          1.65          23.4
+V  :          5.66          8.33          9.51          10.6          14.8          18.1
+k  :        0.0725        0.0875        0.0988         0.111         0.151            10
+
+Elapsed time (seconds):    0.022
+CPU time     (seconds):        0
+
+ -------------------------------------------------------------------------------
+
+ _______________________________________________________________________________
+
+
+
+ESTIMATION OF THE FISHER INFORMATION MATRIX ____________________________________
+
+
+Estimation of the Fisher information matrix by Stochastic Approximation --------
+
+Correlation Matrix :
+   F_pop         1
+  ka_pop-0.0094793         1
+   V_pop   0.36161   0.13353         1
+   k_pop  -0.09508  -0.18864  -0.23726         1
+ omega_F   0.46709  0.025493   0.19057 -0.072178         1
+omega_ka -0.022341  0.096122 0.0066677 -0.021195 -0.054923         1
+ omega_V -0.098631 -0.013687  0.015489-0.0039654  -0.15452 -0.035553         1
+ omega_k -0.060816  0.051964 0.0073759  -0.11059 -0.074591   0.03653  0.059354         1
+       b -0.032292  0.0200260.00091222  0.011387 -0.027629 -0.054945 -0.029364 -0.073235         1
+
+                               min       max   max/min
+Eigen values           :      0.48       1.8       3.8
+
+Elapsed time (seconds):     0.32
+CPU time     (seconds):      1.6
+Iterations:       50 (Autostop)
+
+ -------------------------------------------------------------------------------
+
+ _______________________________________________________________________________
+
+
+DATASET INFORMATION
+Number of individuals: 60
+Number of observations (Y): 900
+Number of doses: 360
+
