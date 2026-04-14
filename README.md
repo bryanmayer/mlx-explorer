@@ -19,16 +19,23 @@ curl -fsSL "$RAW/dashboard/setup-dashboard.Rmd"             -o dashboard/setup-d
 curl -fsSL "$RAW/dashboard/validate-models.R"               -o dashboard/validate-models.R
 curl -fsSL "$RAW/dashboard/wipe-data.R"                     -o dashboard/wipe-data.R
 curl -fsSL "$RAW/dashboard/update-dashboard.sh"             -o dashboard/update-dashboard.sh
+curl -fsSL "$RAW/dashboard/setup_dashboard.py"              -o dashboard/setup_dashboard.py
 chmod +x dashboard/update-dashboard.sh
 curl -fsSL "$RAW/MODEL-EXPLORER.md"                         -o MODEL-EXPLORER.md
 ```
 
 ### After downloading
 
-1. **Edit** `dashboard/setup-dashboard.Rmd` — fill in `PHASE_MAP` and `NOTES_EXCLUDE`
-2. **Knit** `setup-dashboard.Rmd` — this creates a configured `dashboard/generate-explorer-data.R`
-   and copies a clean `model-explorer.html` one level up (next to your phase directories)
-3. **Run** `source("dashboard/generate-explorer-data.R")` after each model run
+**Option A — R (Rmd):**
+1. Edit `dashboard/setup-dashboard.Rmd` — fill in `PHASE_MAP` and `NOTES_EXCLUDE`
+2. Knit `setup-dashboard.Rmd` — patches the config and copies `model-explorer.html` one level up
+
+**Option B — Python (no R/Rmd required for setup):**
+1. Edit `PHASE_MAP` and `NOTES_EXCLUDE` at the top of `dashboard/setup_dashboard.py`
+2. Run: `cd dashboard && python setup_dashboard.py`
+
+**Then (either option):**
+3. **Run** `source("dashboard/generate-explorer-data.R")` or `bash dashboard/update-dashboard.sh` after each model run
 4. **Open** `model-explorer.html` in a browser (no server needed)
 
 ### Project layout after setup

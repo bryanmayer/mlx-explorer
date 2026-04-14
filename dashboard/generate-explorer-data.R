@@ -5,6 +5,7 @@
 # Usage:
 #   source("dashboard/generate-explorer-data.R")
 
+if (!requireNamespace("jsonlite", quietly = TRUE)) install.packages("jsonlite", repos = "https://cloud.r-project.org")
 library(jsonlite)
 
 # ── Config ──────────────────────────────────────────────────────────────────
