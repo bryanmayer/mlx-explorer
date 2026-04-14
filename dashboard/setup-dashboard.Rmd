@@ -1,0 +1,213 @@
+---
+title: "Model Explorer — Dashboard Setup"
+author: ""
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Model Explorer Setup
+
+This notebook configures the **Model Explorer** dashboard for your project.
+It patches the config block in `generate-explorer-data.R` (in place) and
+copies a clean `model-explorer.html` one level up from `dashboard/`.
+
+## 1. Configure your project
+
+Edit the chunk below to match your project layout.
+
+```{r config}
+# ── TARGET DIRECTORY ────────────────────────────────────────────────────────
+# Automatically set to one level up from this dashboard/ folder.
+# model-explorer.html will be placed here, next to the phase directories.
+TARGET_DIR <- dirname(normalizePath(".", mustWork = TRUE))
+
+# ── PHASE MAP ───────────────────────────────────────────────────────────────
+# Keys = exact subdirectory names under TARGET_DIR
+# Values = display labels shown as phase tabs in the dashboard
+# Only directories listed here will be scanned for models.
+# Example: if your layout is models/single_route/ and models/multiple_route/
+#   then use: "single_route" = "Single Route", "multiple_route" = "Multiple Route"
+PHASE_MAP <- list(
+  # "directory_name" = "Display Label",
+  # "01-Primary"     = "Primary",
+  # "02-Decay"       = "Decay"
+)
+
+# ── NOTES EXCLUDE ───────────────────────────────────────────────────────────
+# Parameters that are always fixed by design across all models.
+# These are omitted from the "fixed params" notes in the Overview tab
+# to reduce clutter. (They'll still appear in the Parameters tab.)
+NOTES_EXCLUDE <- c(
+  # "k_pop",
+  # "rebound_flag_pop"
+)
+```
+
+## 2. Expected directory layout
+
+The dashboard expects Monolix projects organized like this:
+
+```
+final-models/
+├── model-explorer.html          <- the dashboard (created by this notebook)
+├── dashboard/
+│   ├── generate-explorer-data.R <- data generator (config patched by this notebook)
+│   ├── model-explorer-template.html <- clean HTML template
+│   ├── setup-dashboard.Rmd      <- this file
+│   ├── validate-models.R        <- validation checks
+│   ├── wipe-data.R              <- strips injected data from HTML
+│   └── update-dashboard.sh      <- shell wrapper for generate-explorer-data.R
+│
+├── 01-Primary/                  <- phase directory (name must match PHASE_MAP)
+│   ├── model_family_A/          <- family grouping (sidebar subheader)
+│   │   ├── model_name/          <- one per model
+│   │   │   ├── model_name/      <- Monolix output directory
+│   │   │   │   ├── populationParameters.txt
+│   │   │   │   ├── logLikelihood.txt
+│   │   │   │   ├── summary.txt
+│   │   │   │   ├── IndividualParameters/
+│   │   │   │   │   └── estimatedIndividualParameters.txt
+│   │   │   │   └── ChartsData/
+│   │   │   │       ├── IndividualFits/
+│   │   │   │       └── ObservationsVsPredictions/
+│   │   │   └── model_name.mlxtran
+│   │   └── another_model/
+│   │       └── ...
+│   └── model_family_B/
+│       └── ...
+│
+├── 02-Decay/
+│   └── ...
+```
+
+Key conventions:
+
+- **Phase directories** are top-level folders whose names appear as keys in `PHASE_MAP`
+- **Family directories** sit one level below phases; models within the same family
+  are grouped together in the sidebar under a shared header
+- **Model directories** contain a Monolix output subdirectory with the same name,
+  plus a `.mlxtran` project file alongside it
+- The model output directory **must contain `populationParameters.txt`** — this is
+  how the scanner identifies valid model runs
+
+## 3. Deploy HTML
+
+Copy the template HTML one level up from `dashboard/` so it sits next to
+the phase directories (e.g., `final-models/model-explorer.html`).
+
+```{r html, message=TRUE}
+source_template <- "model-explorer-template.html"
+if (!file.exists(source_template)) {
+  stop("model-explorer-template.html not found next to this Rmd")
+}
+
+html <- readLines(source_template, warn = FALSE)
+
+# Wipe any injected data so we start clean
+start_idx <- grep("// <!-- MODEL_DATA_START -->", html, fixed = TRUE)
+end_idx   <- grep("// <!-- MODEL_DATA_END -->", html, fixed = TRUE)
+
+if (length(start_idx) > 0 && length(end_idx) > 0) {
+  html <- c(
+    html[1:start_idx],
+    "window.MODEL_DATA = [];",
+    "window.DASHBOARD_META = {};",
+    html[end_idx:length(html)]
+  )
+}
+
+target_html <- file.path(TARGET_DIR, "model-explorer.html")
+writeLines(html, target_html)
+cat("\u2713", target_html, "\n")
+```
+
+## 4. Patch generate-explorer-data.R config
+
+Rewrites the config section of the existing `generate-explorer-data.R`
+with your `PHASE_MAP`, `NOTES_EXCLUDE`, and `BASE_DIR`.
+
+```{r patch-config, message=TRUE}
+gen_path  <- "generate-explorer-data.R"
+gen_lines <- readLines(gen_path, warn = FALSE)
+
+# Find config section boundaries
+config_start <- grep("^# ── Config", gen_lines)
+config_end   <- grep("^# ── Helper", gen_lines)[1] - 1
+
+if (length(config_start) == 0 || is.na(config_end)) {
+  stop("Could not find config section markers in generate-explorer-data.R")
+}
+
+# Build the PHASE_MAP string
+if (length(PHASE_MAP) > 0) {
+  phase_entries <- paste0('  "', names(PHASE_MAP), '" = "', unlist(PHASE_MAP), '"')
+  phase_str <- paste0("PHASE_MAP <- list(\n", paste(phase_entries, collapse = ",\n"), "\n)")
+} else {
+  phase_str <- paste0(
+    "PHASE_MAP <- list(\n",
+    '  # "01-Phase" = "Phase"    # \u2190 fill in your phase directories\n',
+    ")"
+  )
+}
+
+# Build NOTES_EXCLUDE string
+if (length(NOTES_EXCLUDE) > 0) {
+  exclude_str <- paste0('NOTES_EXCLUDE <- c("', paste(NOTES_EXCLUDE, collapse = '", "'), '")')
+} else {
+  exclude_str <- "NOTES_EXCLUDE <- c()"
+}
+
+new_config <- c(
+  '# ── Config ──────────────────────────────────────────────────────────────────',
+  paste0('BASE_DIR   <- "', TARGET_DIR, '"'),
+  'HTML_FILE  <- file.path(BASE_DIR, "model-explorer.html")',
+  'source(file.path(BASE_DIR, "dashboard", "validate-models.R"))',
+  '',
+  phase_str,
+  '',
+  'IGNORE_MODELS <- c()',
+  '',
+  'PLOT_DEFAULTS <- list(',
+  '  lloq           = NA,',
+  '  yLimitLower    = NA,',
+  '  dataIsLog      = FALSE,',
+  '  logY           = FALSE,',
+  '  allowLogToggle = TRUE',
+  ')',
+  '',
+  exclude_str,
+  ''
+)
+
+gen_lines <- c(gen_lines[1:(config_start - 1)], new_config, gen_lines[(config_end + 1):length(gen_lines)])
+writeLines(gen_lines, gen_path)
+cat("\u2713 Patched config in", gen_path, "\n")
+```
+
+## 5. Next steps
+
+After knitting this notebook:
+
+1. **Organize your Monolix projects** under `r TARGET_DIR` following the layout above
+2. **Edit** `generate-explorer-data.R` if you need to adjust `PHASE_MAP`,
+   `PLOT_DEFAULTS`, or `IGNORE_MODELS` (config was pre-filled from above)
+3. **Generate the dashboard data:**
+    ```r
+    source("dashboard/generate-explorer-data.R")
+    ```
+    or: `bash dashboard/update-dashboard.sh`
+4. **Open** `model-explorer.html` in your browser
+
+To refresh after re-running models, just re-run step 3.
+
+## Dashboard features
+
+| Tab | What it shows |
+|-----|---------------|
+| **Overview** | BICc/BIC/AIC ranking, convergence status, parameter counts |
+| **Parameters** | Detailed estimates + RSE, Structure (FIXED/FITTED), Initial values |
+| **Shrinkage** | η-shrinkage per random effect, color-coded by severity |
+| **Comparison** | All models in the phase ranked by selected criterion |
+| **Parm Plot** | Violin plots of individual parameter distributions (EBE modes) |
+| **Ind. Fits** | Per-subject time-course fits with observed data overlay |
+| **Diagnostics** | Observed vs IPRED / Pop Pred scatter plots |

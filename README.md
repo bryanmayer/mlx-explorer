@@ -1,65 +1,83 @@
 ## Setup
 
-  Copy three files into your project:
+Download the `dashboard/` folder into your project's final-models directory,
+then knit `setup-dashboard.Rmd` to scaffold a configured dashboard.
 
-  R/generate-explorer-data.R
-  R/generate-explorer-figures.R
-  analysis/model-explorer.html
+### Quick start (bash)
 
-  Then edit the config block at the top of each R script:
+```bash
+# one-liner — adjust the branch name if needed (main vs master)
+REPO="bryanmayer/mlx-explorer"
+BRANCH="main"
+RAW="https://raw.githubusercontent.com/$REPO/$BRANCH"
 
-Bash script 
+mkdir -p dashboard
+
+curl -fsSL "$RAW/dashboard/generate-explorer-data.R"       -o dashboard/generate-explorer-data.R
+curl -fsSL "$RAW/dashboard/model-explorer-template.html"    -o dashboard/model-explorer-template.html
+curl -fsSL "$RAW/dashboard/setup-dashboard.Rmd"             -o dashboard/setup-dashboard.Rmd
+curl -fsSL "$RAW/dashboard/validate-models.R"               -o dashboard/validate-models.R
+curl -fsSL "$RAW/dashboard/wipe-data.R"                     -o dashboard/wipe-data.R
+curl -fsSL "$RAW/dashboard/update-dashboard.sh"             -o dashboard/update-dashboard.sh
+chmod +x dashboard/update-dashboard.sh
+curl -fsSL "$RAW/MODEL-EXPLORER.md"                         -o MODEL-EXPLORER.md
+```
+
+### After downloading
+
+1. **Edit** `dashboard/setup-dashboard.Rmd` — fill in `PHASE_MAP` and `NOTES_EXCLUDE`
+2. **Knit** `setup-dashboard.Rmd` — this creates a configured `dashboard/generate-explorer-data.R`
+   and copies a clean `model-explorer.html` one level up (next to your phase directories)
+3. **Run** `source("dashboard/generate-explorer-data.R")` after each model run
+4. **Open** `model-explorer.html` in a browser (no server needed)
+
+### Project layout after setup
 
 ```
-  # one-liner — adjust the branch name if needed (main vs master)
-  REPO="bryanmayer/mlx-explorer"
-  BRANCH="main"
-  RAW="https://raw.githubusercontent.com/$REPO/$BRANCH"
-
-  curl -fsSL "$RAW/R/generate-explorer-data.R"    -o R/generate-explorer-data.R
-  curl -fsSL "$RAW/R/generate-explorer-figures.R" -o R/generate-explorer-figures.R
-  curl -fsSL "$RAW/analysis/model-explorer.html"  -o analysis/model-explorer.html
-  curl -fsSL "$RAW/MODEL-EXPLORER.md"  -o MODEL-EXPLORER.md
-
+final-models/
+├── model-explorer.html              ← the dashboard (created by setup-dashboard.Rmd)
+├── dashboard/
+│   ├── generate-explorer-data.R     ← data generator (configured by setup)
+│   ├── model-explorer-template.html ← clean HTML template
+│   ├── setup-dashboard.Rmd          ← one-time scaffolding notebook
+│   ├── validate-models.R            ← pre-hoc validation checks
+│   └── wipe-data.R                  ← strips injected data from HTML
+├── 01-Primary/
+│   └── ...
+├── 02-Decay/
+│   └── ...
 ```
 
+### Configuration
 
-  **`generate-explorer-data.R`**
-  ```r
-  MODELS_SUBDIR      <- "models"       # where your .mlxtran projects live
-  PHASE_PATTERNS     <- list(          # path prefix → phase label; set to list() to disable
-    phase1 = "^phase1/",
-    phase2 = "^phase2/"
-  )
-  NOTES_EXCLUDE_PARAMS <- character(0) # params always fixed by design, omit from notes
+**`dashboard/generate-explorer-data.R`** (after knitting setup-dashboard.Rmd):
+```r
+BASE_DIR   <- "/path/to/final-models"   # set by setup-dashboard.Rmd
+PHASE_MAP  <- list(
+  "01-Primary" = "Primary",
+  "02-Decay"   = "Decay"
+)
+NOTES_EXCLUDE <- c()                     # params always fixed by design
+PLOT_DEFAULTS <- list(
+  lloq           = NA,         # lower limit of quantification
+  yLimitLower    = NA,         # lower y-axis bound
+  dataIsLog      = FALSE,      # TRUE if DV is already log10-transformed
+  logY           = FALSE,      # default log-axis toggle state
+  allowLogToggle = TRUE        # show/hide Log Y checkbox
+)
+```
 
-  generate-explorer-figures.R
-  MODELS_SUBDIR <- "models"
-  FITS_Y_LABEL  <- "Concentration (ng/mL)"  # y-axis label on individual fits plot
+No changes needed to `model-explorer.html`.
 
-  No changes needed to model-explorer.html.
+---
 
-  ---
-  After each model run
+### Requirements
 
-  source(root("R", "generate-explorer-data.R"))
+R packages: `jsonlite`, `rprojroot`
 
-  This scans models/ for completed runs, extracts parameters and fit metrics,
-  generates figures, and writes analysis/model-data.js. Then refresh the browser.
+```r
+install.packages(c("jsonlite", "rprojroot"))
+```
 
-  ---
-  Viewing the dashboard
-
-  Open analysis/model-explorer.html directly in a browser (no server needed).
-  Requires an internet connection on first open to load React and Tailwind from CDN.
-
-  ---
-  Requirements
-
-  R packages: tidyverse, jsonlite, glue, base64enc, rprojroot
-
-  install.packages(c("tidyverse", "jsonlite", "glue", "base64enc", "rprojroot"))
-
-  Your project must have an .Rproj file at the root (used by rprojroot to
-  locate the project directory).
-  ```
+Your project must have an `.Rproj` file at the root (used by `rprojroot`
+to locate the project directory) or set `BASE_DIR` to an absolute path.

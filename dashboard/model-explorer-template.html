@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Model Explorer</title>
+<style>
+  :root {
+    --bg: #f5f6fa;
+    --surface: #fff;
+    --border: #e1e4e8;
+    --text: #24292e;
+    --text-muted: #586069;
+    --accent: #0366d6;
+    --accent-light: #e8f0fe;
+    --green: #28a745;
+    --green-bg: #dcffe4;
+    --yellow: #dbab09;
+    --yellow-bg: #fff8c5;
+    --amber: #e36209;
+    --amber-bg: #fff3e0;
+    --red: #d73a49;
+    --red-bg: #ffeef0;
+    --sidebar-w: 280px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+  /* ── Top bar ── */
+  .topbar { background: #24292e; color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 24px; position: sticky; top: 0; z-index: 100; }
+  .topbar h1 { font-size: 16px; font-weight: 600; white-space: nowrap; }
+  .phase-tabs { display: flex; gap: 2px; }
+  .phase-tab { padding: 6px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px; font-weight: 500; color: #aaafb6; background: transparent; border: none; transition: all .15s; }
+  .phase-tab:hover { color: #fff; background: rgba(255,255,255,.08); }
+  .phase-tab.active { color: #fff; background: #444d56; }
+
+  /* ── Layout ── */
+  .main-layout { display: flex; height: calc(100vh - 42px); }
+
+  /* ── Sidebar ── */
+  .sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-header { padding: 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-header .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .sidebar-header button { font-size: 12px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; color: var(--text-muted); }
+  .sidebar-header button:hover { background: var(--bg); }
+  .sidebar-header .sort-label { font-size: 11px; color: var(--text-muted); }
+  .sidebar-header select { font-size: 12px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; }
+  .model-list { flex: 1; overflow-y: auto; }
+  .model-item { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; display: flex; flex-direction: column; gap: 2px; }
+  .model-item:hover { background: var(--bg); }
+  .model-item.selected { background: var(--accent-light); border-left: 3px solid var(--accent); }
+  .model-item .name { font-size: 13px; font-weight: 500; word-break: break-all; }
+  .model-item .meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+  .badge-converged { background: var(--green-bg); color: var(--green); }
+  .badge-warnings { background: var(--yellow-bg); color: var(--yellow); }
+  .badge-failed { background: var(--red-bg); color: var(--red); }
+  .badge-fixed { background: #e8e8e8; color: #666; font-size: 10px; padding: 0 4px; border-radius: 3px; }
+
+  /* ── Content ── */
+  .content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+  .content-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); background: var(--surface); padding: 0 16px; position: sticky; top: 0; z-index: 10; }
+  .content-tab { padding: 10px 16px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .15s; background: none; border-top: none; border-left: none; border-right: none; }
+  .content-tab:hover { color: var(--text); }
+  .content-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { flex: 1; padding: 16px; display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Tables ── */
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg); font-weight: 600; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+  td { white-space: nowrap; }
+  tr.best-row { background: var(--green-bg); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .warn { color: var(--red); font-weight: 600; }
+  .flag-cell { font-size: 12px; color: var(--text-muted); }
+
+  /* ── Summary cards ── */
+  .cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 180px; flex: 1; }
+  .card .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
+  .card .value { font-size: 18px; font-weight: 700; }
+  .card .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Shrinkage heatmap ── */
+  .shrink-cell { text-align: center; font-weight: 500; min-width: 70px; }
+  .shrink-green  { background: #dcffe4; color: #22863a; }
+  .shrink-yellow { background: #fff8c5; color: #b08800; }
+  .shrink-amber  { background: #fff3e0; color: #c24e00; }
+  .shrink-red    { background: #ffeef0; color: #cb2431; }
+  .shrink-na     { background: #f6f8fa; color: #ccc; }
+
+  /* ── Bar chart ── */
+  .bar-chart { margin-bottom: 20px; }
+  .bar-chart h3 { font-size: 14px; margin-bottom: 8px; }
+  .bar-row { display: flex; align-items: center; margin-bottom: 4px; }
+  .bar-label { width: 200px; font-size: 12px; text-align: right; padding-right: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 22px; background: var(--bg); border-radius: 3px; overflow: hidden; position: relative; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .3s; display: flex; align-items: center; padding-left: 6px; font-size: 11px; color: #fff; font-weight: 500; }
+  .bar-fill.best { background: var(--green); }
+  .bar-fill.normal { background: var(--accent); }
+  .bar-value { margin-left: 8px; font-size: 12px; color: var(--text-muted); min-width: 60px; }
+
+  /* ── Delta BIC table ── */
+  .evidence-negligible { color: var(--green); }
+  .evidence-positive { color: var(--yellow); }
+  .evidence-strong { color: var(--amber); }
+  .evidence-vstrong { color: var(--red); font-weight: 600; }
+
+  /* ── Notes column ── */
+  .notes { font-size: 11px; color: var(--text-muted); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+
+  /* ── No selection ── */
+  .empty-state { display: flex; align-items: center; justify-content: center; height: 300px; color: var(--text-muted); font-size: 15px; }
+
+  /* ── Scrollbar styling ── */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+  /* ── Parameter view toggle ── */
+  .param-view-btn { padding: 4px 12px; font-size: 12px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; border-radius: 4px; color: var(--text-muted); }
+  .param-view-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .param-view-btn:hover:not(.active) { background: #f0f0f0; }
+  .structure-table td, .structure-table th { padding: 4px 8px; }
+
+  /* ── Figures / Violin plots ── */
+  .violin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .violin-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .violin-panel h4 { font-size: 12px; margin-bottom: 6px; text-align: center; }
+  .violin-panel canvas { width: 100%; }
+  .ifits-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .ifits-grid .violin-panel { padding: 6px; }
+  .ifits-grid .violin-panel h4 { font-size: 11px; margin-bottom: 3px; }
+  .violin-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; font-size: 12px; }
+  .violin-legend-item { display: flex; align-items: center; gap: 4px; }
+  .violin-legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+  .family-group { margin-bottom: 4px; }
+  .family-header { padding: 6px 12px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; background: var(--bg); border-bottom: 1px solid var(--border); letter-spacing: .5px; display: flex; justify-content: space-between; align-items: center; }
+  .family-toggle { font-size: 10px; font-weight: 500; text-transform: none; letter-spacing: 0; display: flex; gap: 6px; }
+  .family-toggle a { color: var(--primary); cursor: pointer; text-decoration: none; }
+  .family-toggle a:hover { text-decoration: underline; }
+
+  /* ── Staleness / validation banner ── */
+  .dash-banner { padding: 8px 16px; font-size: 12px; display: none; align-items: center; gap: 8px; position: sticky; top: 40px; z-index: 99; }
+  .dash-banner.warn { display: flex; background: #fff3cd; color: #856404; border-bottom: 1px solid #ffc107; }
+  .dash-banner.error { display: flex; background: #f8d7da; color: #721c24; border-bottom: 1px solid #f5c6cb; }
+  .dash-banner.info { display: flex; background: #e8f4f8; color: #31708f; border-bottom: 1px solid #bce8f1; }
+  .dash-banner-dismiss { cursor: pointer; margin-left: auto; font-weight: bold; opacity: 0.6; }
+  .dash-banner-dismiss:hover { opacity: 1; }
+  .dash-meta { font-size: 10px; color: var(--text-muted); padding: 2px 16px; text-align: right; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Model Explorer</h1>
+  <div class="phase-tabs" id="phaseTabs"></div>
+</div>
+<div id="dashBanner" class="dash-banner"></div>
+
+<div class="main-layout">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="sort-label">Sort by:</span>
+        <select id="sortSelect" onchange="renderSidebar()">
+          <option value="BICc">BICc</option>
+          <option value="BIC">BIC</option>
+          <option value="AIC">AIC</option>
+          <option value="OFV">-2LL (OFV)</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+      <div class="actions">
+        <button onclick="selectAll()">Select all</button>
+        <button onclick="clearAll()">Clear all</button>
+      </div>
+    </div>
+    <div class="model-list" id="modelList"></div>
+  </div>
+  <div class="content">
+    <div class="content-tabs">
+      <button class="content-tab active" data-tab="overview">Overview</button>
+      <button class="content-tab" data-tab="parameters">Parameters</button>
+      <button class="content-tab" data-tab="shrinkage">Shrinkage</button>
+      <button class="content-tab" data-tab="comparison">Comparison</button>
+      <button class="content-tab" data-tab="figures">Parm Plot</button>
+      <button class="content-tab" data-tab="indivfits">Ind. Fits</button>
+      <button class="content-tab" data-tab="diagnostics">Diagnostics</button>
+    </div>
+    <div class="tab-content active" id="tab-overview"></div>
+    <div class="tab-content" id="tab-parameters"></div>
+    <div class="tab-content" id="tab-shrinkage"></div>
+    <div class="tab-content" id="tab-comparison"></div>
+    <div class="tab-content" id="tab-figures"></div>
+    <div class="tab-content" id="tab-indivfits"></div>
+    <div class="tab-content" id="tab-diagnostics"></div>
+  </div>
+</div>
+
+<script>
+// <!-- MODEL_DATA_START -->
+window.MODEL_DATA = [];
+window.DASHBOARD_META = {};
+// <!-- MODEL_DATA_END -->
+
+// ── Staleness & validation banner ────────────────────────────────────────
+(function() {
+  const banner = document.getElementById('dashBanner');
+  const meta = window.DASHBOARD_META;
+  if (!meta) {
+    banner.className = 'dash-banner error';
+    banner.innerHTML = '<strong>No metadata found.</strong> Run <code>generate-explorer-data.R</code> to regenerate.';
+    return;
+  }
+
+  const msgs = [];
+  let level = 'info'; // info < warn < error
+  const dismiss = '<span class="dash-banner-dismiss" onclick="this.parentElement.style.display=\'none\'">&times;</span>';
+
+  // Staleness check
+  const generated = new Date(meta.generatedAt);
+  const daysSince = (Date.now() - generated.getTime()) / (1000 * 60 * 60 * 24);
+  const genLabel = generated.toLocaleDateString() + ' ' + generated.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+  if (daysSince > 30) {
+    msgs.push(`Data generated <strong>${Math.floor(daysSince)} days ago</strong> (${genLabel}).`);
+    level = 'error';
+  } else if (daysSince > 7) {
+    msgs.push(`Data generated <strong>${Math.floor(daysSince)} days ago</strong> (${genLabel}).`);
+    level = 'warn';
+  }
+
+  // Integrity issues — actionable (stale charts, missing files, bad data)
+  const integrityIssues = (meta.validationLog || []).filter(v => v.category === 'integrity');
+  const intErrors = integrityIssues.filter(v => v.level === 'ERROR');
+  const intWarns  = integrityIssues.filter(v => v.level !== 'ERROR');
+
+  if (intErrors.length > 0) {
+    msgs.push(`<strong>${intErrors.length} data error(s)</strong>`);
+    level = 'error';
+  }
+  if (intWarns.length > 0) {
+    msgs.push(`${intWarns.length} data warning(s)`);
+    if (level === 'info') level = 'warn';
+  }
+
+  // Build expandable details — separate integrity from diagnostic
+  const diagnosticIssues = (meta.validationLog || []).filter(v => v.category === 'diagnostic');
+  let details = '';
+
+  if (integrityIssues.length > 0) {
+    details += '<details style="margin-top:4px;"><summary style="cursor:pointer; font-size:11px; font-weight:600;">' +
+      `Data integrity (${integrityIssues.length})</summary><ul style="margin:4px 0 0 16px; font-size:11px;">`;
+    integrityIssues.forEach(v => {
+      const icon = v.level === 'ERROR' ? '\u274c' : '\u26a0\ufe0f';
+      details += '<li>' + icon + ' <strong>' + v.model + '</strong>: ' + v.msg + '</li>';
+    });
+    details += '</ul></details>';
+  }
+
+  if (diagnosticIssues.length > 0) {
+    details += '<details style="margin-top:2px;"><summary style="cursor:pointer; font-size:11px; color:#666;">' +
+      `Model diagnostics (${diagnosticIssues.length})</summary><ul style="margin:4px 0 0 16px; font-size:11px; color:#666;">`;
+    diagnosticIssues.forEach(v => {
+      details += '<li>\ud83d\udcca <strong>' + v.model + '</strong>: ' + v.msg + '</li>';
+    });
+    details += '</ul></details>';
+  }
+
+  if (details) msgs.push(details);
+
+  if (msgs.length === 0) {
+    banner.className = 'dash-banner info';
+    banner.innerHTML = `Data generated ${genLabel} \u2014 ${meta.nModels} models, all checks passed. ${dismiss}`;
+  } else {
+    const refreshNote = ' <em style="font-size:11px;">(Run <code>generate-explorer-data.R</code> to refresh.)</em>';
+    banner.className = 'dash-banner ' + level;
+    banner.innerHTML = msgs.join(' \u2022 ') + refreshNote + ' ' + dismiss;
+  }
+})();
+
+// ── State ──────────────────────────────────────────────────────────────────
+const state = {
+  activePhase: null,
+  selected: new Set(),
+  activeTab: 'overview'
+};
+
+// ── Data access ────────────────────────────────────────────────────────────
+function getPhases() {
+  const seen = new Map();
+  MODEL_DATA.forEach(m => {
+    if (!seen.has(m.phase)) seen.set(m.phase, m.phase_dir);
+  });
+  return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+}
+
+function getModelsForPhase(phase) {
+  return MODEL_DATA.filter(m => m.phase === phase);
+}
+
+function getSelectedModels() {
+  return getModelsForPhase(state.activePhase).filter(m => state.selected.has(m.id));
+}
+
+function getLLValue(model, key) {
+  if (!model.likelihood) return null;
+  const v = model.likelihood[key];
+  return (v === undefined || v === null) ? null : v;
+}
+
+// ── Phase tabs ─────────────────────────────────────────────────────────────
+function renderPhaseTabs() {
+  const phases = getPhases();
+  const el = document.getElementById('phaseTabs');
+  el.innerHTML = phases.map(([label]) =>
+    `<button class="phase-tab ${state.activePhase === label ? 'active' : ''}"
+             onclick="switchPhase('${label}')">${label}</button>`
+  ).join('');
+}
+
+function switchPhase(phase) {
+  state.activePhase = phase;
+  state.selected.clear();
+  // Auto-select all models in this phase
+  getModelsForPhase(phase).forEach(m => state.selected.add(m.id));
+  renderPhaseTabs();
+  renderSidebar();
+  renderContent();
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const models = getModelsForPhase(state.activePhase);
+  const sortKey = document.getElementById('sortSelect').value;
+
+  const sorted = [...models].sort((a, b) => {
+    if (sortKey === 'name') return a.name.localeCompare(b.name);
+    const va = getLLValue(a, sortKey);
+    const vb = getLLValue(b, sortKey);
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    return va - vb;
+  });
+
+  // Group by family
+  const families = new Map();
+  sorted.forEach(m => {
+    if (!families.has(m.family)) families.set(m.family, []);
+    families.get(m.family).push(m);
+  });
+
+  const el = document.getElementById('modelList');
+  let html = '';
+  for (const [family, fModels] of families) {
+    const fIds = fModels.map(m => m.id);
+    const fIdsAttr = JSON.stringify(fIds).replace(/"/g, '&quot;');
+    html += `<div class="family-group"><div class="family-header"><span>${esc(family)}</span><span class="family-toggle"><a onclick="event.stopPropagation(); selectFamily(${fIdsAttr}, true)">all</a><a onclick="event.stopPropagation(); selectFamily(${fIdsAttr}, false)">none</a></span></div>`;
+    fModels.forEach(m => {
+      const sel = state.selected.has(m.id) ? 'selected' : '';
+      const bic = getLLValue(m, 'BICc');
+      const bicStr = bic !== null ? bic.toFixed(1) : '—';
+      html += `<div class="model-item ${sel}" onclick="toggleModel('${m.id}')">
+        <span class="name">${esc(m.name)}</span>
+        <span class="meta">
+          <span class="badge badge-${m.status}">${m.status}</span>
+          <span>BICc: ${bicStr}</span>
+        </span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function toggleModel(id) {
+  if (state.selected.has(id)) state.selected.delete(id);
+  else state.selected.add(id);
+  renderSidebar();
+  renderContent();
+}
+
+function selectAll() {
+  getModelsForPhase(state.activePhase).forEach(m => state.selected.add(m.id));
+  renderSidebar();
+  renderContent();
+}
+
+function clearAll() {
+  const phaseIds = new Set(getModelsForPhase(state.activePhase).map(m => m.id));
+  phaseIds.forEach(id => state.selected.delete(id));
+  renderSidebar();
+  renderContent();
+}
+
+function selectFamily(ids, selectOn) {
+  ids.forEach(id => {
+    if (selectOn) state.selected.add(id);
+    else state.selected.delete(id);
+  });
+  renderSidebar();
+  renderContent();
+}
+
+// ── Content tabs ───────────────────────────────────────────────────────────
+document.querySelectorAll('.content-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.content-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.activeTab = tab.dataset.tab;
+    document.getElementById('tab-' + state.activeTab).classList.add('active');
+    renderContent();
+  });
+});
+
+// ── Render content ─────────────────────────────────────────────────────────
+function renderContent() {
+  const models = getSelectedModels();
+  // Comparison always shows all phase models regardless of selection
+  renderComparison(models);
+  if (models.length === 0) {
+    ['overview','parameters','shrinkage','figures','indivfits','diagnostics'].forEach(t => {
+      document.getElementById('tab-' + t).innerHTML = '<div class="empty-state">Select models from the sidebar</div>';
+    });
+    return;
+  }
+  renderOverview(models);
+  renderParameters(models);
+  renderShrinkage(models);
+  renderFigures(models);
+  renderIndivFits(models);
+  renderDiagnostics(models);
+}
+
+// ── Overview tab ───────────────────────────────────────────────────────────
+function renderOverview(models) {
+  const el = document.getElementById('tab-overview');
+  const bestBIC = findBest(models, 'BIC');
+  const bestAIC = findBest(models, 'AIC');
+  const bestOFV = findBest(models, 'OFV');
+  const bestBICc = findBest(models, 'BICc');
+
+  let html = '<div class="cards">';
+  html += makeCard('Best BICc', bestBICc ? bestBICc.name : '—', bestBICc ? fmtNum(getLLValue(bestBICc, 'BICc')) : '');
+  html += makeCard('Best BIC', bestBIC ? bestBIC.name : '—', bestBIC ? fmtNum(getLLValue(bestBIC, 'BIC')) : '');
+  html += makeCard('Best AIC', bestAIC ? bestAIC.name : '—', bestAIC ? fmtNum(getLLValue(bestAIC, 'AIC')) : '');
+  html += makeCard('Best -2LL', bestOFV ? bestOFV.name : '—', bestOFV ? fmtNum(getLLValue(bestOFV, 'OFV')) : '');
+  html += '</div>';
+
+  // Overview table
+  html += '<div style="overflow-x:auto"><table><thead><tr>';
+  html += '<th>Model</th><th>Status</th><th class="num">BICc</th><th class="num">BIC</th><th class="num">AIC</th><th class="num">AICc</th><th class="num">-2LL</th>';
+  html += '<th class="num">Est.</th><th class="num">Fixed</th><th>Error</th><th>Flags</th><th>Notes</th>';
+  html += '</tr></thead><tbody>';
+
+  const bestBICcId = bestBICc ? bestBICc.id : null;
+  models.forEach(m => {
+    const isBest = m.id === bestBICcId;
+    html += `<tr class="${isBest ? 'best-row' : ''}">`;
+    html += `<td><strong>${esc(m.name)}</strong></td>`;
+    html += `<td><span class="badge badge-${m.status}">${m.status}</span></td>`;
+    html += `<td class="num">${fmtLL(m, 'BICc')}</td>`;
+    html += `<td class="num">${fmtLL(m, 'BIC')}</td>`;
+    html += `<td class="num">${fmtLL(m, 'AIC')}</td>`;
+    html += `<td class="num">${fmtLL(m, 'AICc')}</td>`;
+    html += `<td class="num">${fmtLL(m, 'OFV')}</td>`;
+    html += `<td class="num">${m.n_estimated}</td>`;
+    html += `<td class="num">${m.n_fixed}</td>`;
+    html += `<td>${getErrorModel(m)}</td>`;
+    html += `<td class="flag-cell">${makeFlags(m)}</td>`;
+    const notesText = makeNotes(m);
+    html += `<td class="notes" title="${esc(notesText)}">${esc(notesText)}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+// ── Parameters tab ─────────────────────────────────────────────────────────
+if (!state.paramView) state.paramView = 'detailed'; // 'detailed' or 'structure'
+
+function renderParameters(models) {
+  const el = document.getElementById('tab-parameters');
+
+  // Toggle bar
+  let html = '<div style="margin-bottom:10px; display:flex; gap:4px; align-items:center;">';
+  ['detailed', 'structure', 'initial'].forEach(v => {
+    const label = v.charAt(0).toUpperCase() + v.slice(1);
+    html += `<button class="param-view-btn ${state.paramView === v ? 'active' : ''}" onclick="state.paramView='${v}'; renderParameters(getSelectedModels())">${label}</button>`;
+  });
+  html += '</div>';
+
+  const types = ['fixed_effect', 'omega', 'correlation', 'error'];
+  const typeLabels = { fixed_effect: 'Fixed Effects', omega: 'Random Effects (\u03C9)', correlation: 'Correlations', error: 'Error Model' };
+
+  if (state.paramView === 'structure') {
+    html += renderParamStructure(models, types, typeLabels);
+  } else if (state.paramView === 'initial') {
+    html += renderParamInitial(models, types, typeLabels);
+  } else {
+    html += renderParamDetailed(models, types, typeLabels);
+  }
+
+  el.innerHTML = html || '<div class="empty-state">No parameter data</div>';
+}
+
+function renderParamDetailed(models, types, typeLabels) {
+  let html = '';
+  types.forEach(type => {
+    const allNames = new Set();
+    models.forEach(m => {
+      Object.values(m.params).forEach(p => {
+        if (p.type === type) allNames.add(p.name);
+      });
+    });
+    if (allNames.size === 0) return;
+
+    const names = Array.from(allNames).sort();
+    html += `<h3 style="margin: 16px 0 8px">${typeLabels[type]}</h3>`;
+    html += '<div style="overflow-x:auto"><table><thead><tr><th>Parameter</th>';
+    models.forEach(m => {
+      html += `<th class="num" colspan="2" style="text-align:center">${esc(m.name)}</th>`;
+    });
+    html += '</tr><tr><th></th>';
+    models.forEach(() => {
+      html += '<th class="num">Estimate</th><th class="num">RSE%</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    names.forEach(name => {
+      html += `<tr><td><code>${esc(name)}</code></td>`;
+      models.forEach(m => {
+        const p = m.params[name];
+        if (!p) {
+          html += '<td class="num">\u2014</td><td class="num">\u2014</td>';
+        } else if (p.fixed) {
+          html += `<td class="num">${fmtParam(p.value)}</td><td class="num"><span class="badge badge-fixed">FIXED</span></td>`;
+        } else {
+          const rseWarn = (p.type === 'fixed_effect' && p.rse !== null && p.rse > 50);
+          const nanWarn = (p.rse === null && !p.fixed);
+          html += `<td class="num">${fmtParam(p.value)}</td>`;
+          if (nanWarn) {
+            html += `<td class="num warn">NaN</td>`;
+          } else {
+            html += `<td class="num ${rseWarn ? 'warn' : ''}">${rseWarn ? '\u26A0 ' : ''}${p.rse !== null ? p.rse.toFixed(1) : '\u2014'}</td>`;
+          }
+        }
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+  });
+  return html;
+}
+
+function renderParamStructure(models, types, typeLabels) {
+  // Compute label prefix stripping
+  const allPhaseNames = getModelsForPhase(state.activePhase).map(m => m.name);
+  const phasePrefix = longestCommonPrefix(allPhaseNames);
+  const labelStripLen = phasePrefix.includes('_') ? phasePrefix.lastIndexOf('_') + 1 : 0;
+
+  let html = '';
+  types.forEach(type => {
+    const allNames = new Set();
+    models.forEach(m => {
+      Object.values(m.params).forEach(p => {
+        if (p.type === type) allNames.add(p.name);
+      });
+    });
+    if (allNames.size === 0) return;
+
+    const names = Array.from(allNames).sort();
+    html += `<h3 style="margin: 16px 0 8px">${typeLabels[type]}</h3>`;
+    html += '<div style="overflow-x:auto"><table class="structure-table"><thead><tr><th>Parameter</th>';
+    models.forEach(m => {
+      const label = labelStripLen > 0 ? m.name.slice(labelStripLen) : m.name;
+      html += `<th style="text-align:center; font-size:11px;">${esc(label)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    names.forEach(name => {
+      html += `<tr><td><code>${esc(name)}</code></td>`;
+      models.forEach(m => {
+        const p = m.params[name];
+        if (!p) {
+          html += '<td style="text-align:center; color:#ccc;">\u2014\u2014</td>';
+        } else if (p.fixed) {
+          html += '<td style="text-align:center;"><span class="badge badge-fixed">FIXED</span></td>';
+        } else {
+          html += '<td style="text-align:center;"><span class="badge badge-converged">FITTED</span></td>';
+        }
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+  });
+  return html;
+}
+
+function renderParamInitial(models, types, typeLabels) {
+  const allPhaseNames = getModelsForPhase(state.activePhase).map(m => m.name);
+  const phasePrefix = longestCommonPrefix(allPhaseNames);
+  const labelStripLen = phasePrefix.includes('_') ? phasePrefix.lastIndexOf('_') + 1 : 0;
+
+  let html = '';
+  types.forEach(type => {
+    const allNames = new Set();
+    models.forEach(m => {
+      Object.values(m.params).forEach(p => {
+        if (p.type === type) allNames.add(p.name);
+      });
+    });
+    if (allNames.size === 0) return;
+
+    const names = Array.from(allNames).sort();
+    html += `<h3 style="margin: 16px 0 8px">${typeLabels[type]}</h3>`;
+    html += '<div style="overflow-x:auto"><table class="structure-table"><thead><tr><th>Parameter</th>';
+    models.forEach(m => {
+      const label = labelStripLen > 0 ? m.name.slice(labelStripLen) : m.name;
+      html += `<th style="text-align:center; font-size:11px;">${esc(label)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    names.forEach(name => {
+      html += `<tr><td><code>${esc(name)}</code></td>`;
+      models.forEach(m => {
+        const p = m.params[name];
+        const initVal = m.initValues ? m.initValues[name] : undefined;
+        if (!p) {
+          html += '<td style="text-align:center; color:#ccc;">\u2014\u2014</td>';
+        } else if (p.fixed) {
+          const valStr = initVal !== undefined ? fmtParam(initVal) : fmtParam(p.value);
+          html += `<td style="text-align:center; background:#f0f0f0; font-size:11px;" title="FIXED">${valStr}</td>`;
+        } else {
+          const valStr = initVal !== undefined ? fmtParam(initVal) : '?';
+          html += `<td style="text-align:center; background:#e6f4ea; font-size:11px;" title="FITTED">${valStr}</td>`;
+        }
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+  });
+  return html;
+}
+
+// ── Shrinkage tab ──────────────────────────────────────────────────────────
+function renderShrinkage(models) {
+  const el = document.getElementById('tab-shrinkage');
+
+  // Collect all shrinkage parameter names
+  const allNames = new Set();
+  models.forEach(m => {
+    Object.keys(m.shrinkage || {}).forEach(k => allNames.add(k));
+  });
+  if (allNames.size === 0) {
+    el.innerHTML = '<div class="empty-state">No shrinkage data</div>';
+    return;
+  }
+  const names = Array.from(allNames).sort();
+
+  let html = '<p style="margin-bottom:12px;color:var(--text-muted);font-size:12px;">Shrinkage (mode %). Green &lt;25%, Yellow 25-40%, Amber 40-50%, Red &gt;50%</p>';
+  html += '<div style="overflow-x:auto"><table><thead><tr><th>Parameter</th>';
+  models.forEach(m => html += `<th class="shrink-cell">${esc(m.name)}</th>`);
+  html += '</tr></thead><tbody>';
+
+  names.forEach(name => {
+    html += `<tr><td><code>${esc(name)}</code></td>`;
+    models.forEach(m => {
+      const s = (m.shrinkage || {})[name];
+      if (!s || s.mode === null) {
+        html += '<td class="shrink-cell shrink-na">—</td>';
+      } else {
+        const v = s.mode;
+        const cls = v < 25 ? 'shrink-green' : v < 40 ? 'shrink-yellow' : v < 50 ? 'shrink-amber' : 'shrink-red';
+        html += `<td class="shrink-cell ${cls}">${v.toFixed(1)}%</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+// ── Comparison tab ─────────────────────────────────────────────────────────
+function renderComparison(_models) {
+  // Always show ALL models in the active phase, regardless of sidebar selection
+  const models = getModelsForPhase(state.activePhase);
+  const el = document.getElementById('tab-comparison');
+  let html = '';
+
+  // Bar charts for each metric
+  ['BICc', 'BIC', 'AIC', 'OFV'].forEach(metric => {
+    const label = metric === 'OFV' ? '-2LL (OFV)' : metric;
+    const vals = models.map(m => ({ name: m.name, val: getLLValue(m, metric) })).filter(v => v.val !== null);
+    if (vals.length === 0) return;
+    vals.sort((a, b) => a.val - b.val);
+
+    const min = Math.min(...vals.map(v => v.val));
+    const max = Math.max(...vals.map(v => v.val));
+    const range = max - min || 1;
+    // Use a baseline slightly below min for visual effect
+    const baseline = min - range * 0.1;
+
+    html += `<div class="bar-chart"><h3>${label}</h3>`;
+    vals.forEach(v => {
+      const isBest = v.val === min;
+      const pct = ((v.val - baseline) / (max - baseline)) * 100;
+      html += `<div class="bar-row">
+        <span class="bar-label" title="${esc(v.name)}">${esc(v.name)}</span>
+        <div class="bar-track"><div class="bar-fill ${isBest ? 'best' : 'normal'}" style="width:${Math.max(pct, 2)}%"></div></div>
+        <span class="bar-value">${v.val.toFixed(1)}</span>
+      </div>`;
+    });
+    html += '</div>';
+  });
+
+  // Delta BIC table
+  const bestBICc = findBest(models, 'BICc');
+  if (bestBICc) {
+    const bestVal = getLLValue(bestBICc, 'BICc');
+    if (bestVal !== null) {
+      html += '<h3 style="margin:20px 0 8px">\u0394BICc vs Best Model</h3>';
+      html += '<p style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">Kass &amp; Raftery (1995): 0\u20132 negligible, 2\u20136 positive, 6\u201310 strong, &gt;10 very strong evidence against higher-BICc model</p>';
+      html += '<table><thead><tr><th>Model</th><th class="num">\u0394BICc</th><th>Evidence</th></tr></thead><tbody>';
+      const sorted = [...models].sort((a, b) => (getLLValue(a, 'BICc') || Infinity) - (getLLValue(b, 'BICc') || Infinity));
+      sorted.forEach(m => {
+        const v = getLLValue(m, 'BICc');
+        if (v === null) return;
+        const delta = v - bestVal;
+        const { label: evLabel, cls: evCls } = deltaEvidence(delta);
+        html += `<tr class="${m.id === bestBICc.id ? 'best-row' : ''}">`;
+        html += `<td>${esc(m.name)}</td>`;
+        html += `<td class="num">${delta.toFixed(1)}</td>`;
+        html += `<td class="${evCls}">${evLabel}</td>`;
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+  }
+
+  el.innerHTML = html || '<div class="empty-state">No likelihood data</div>';
+}
+
+// ── Figures tab (violin plots) ─────────────────────────────────────────────
+const MODEL_COLORS = [
+  'rgba(31,119,180,0.45)', 'rgba(255,127,14,0.45)', 'rgba(44,160,44,0.45)',
+  'rgba(214,39,40,0.45)',  'rgba(148,103,189,0.45)','rgba(140,86,75,0.45)',
+  'rgba(227,119,194,0.45)','rgba(127,127,127,0.45)','rgba(188,189,34,0.45)',
+  'rgba(23,190,207,0.45)', 'rgba(31,119,180,0.3)',  'rgba(255,127,14,0.3)',
+  'rgba(44,160,44,0.3)',   'rgba(214,39,40,0.3)',   'rgba(148,103,189,0.3)',
+  'rgba(140,86,75,0.3)',   'rgba(227,119,194,0.3)', 'rgba(127,127,127,0.3)'
+];
+const MODEL_COLORS_SOLID = [
+  '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b',
+  '#e377c2','#7f7f7f','#bcbd22','#17becf','#1f77b4','#ff7f0e',
+  '#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f'
+];
+
+// Track which parameters are toggled on in the Parm Plot tab
+if (!state.parmPlotParams) state.parmPlotParams = new Set();
+
+function renderFigures(models) {
+  const el = document.getElementById('tab-figures');
+
+  // Collect all fixed-effect parameter base names across selected models
+  // A parameter is available if the model has _pop for it
+  const allParams = new Set();
+  models.forEach(m => {
+    Object.keys(m.params).forEach(k => {
+      if (k.endsWith('_pop')) {
+        const base = k.replace(/_pop$/, '');
+        // Include if model has EBE data OR a non-null pop estimate
+        allParams.add(base);
+      }
+    });
+  });
+  // Also include any EBE-only params
+  models.forEach(m => {
+    if (m.ebe) Object.keys(m.ebe).forEach(k => allParams.add(k));
+  });
+  // Exclude non-interesting params
+  const EXCLUDE = new Set(['k', 'rebound_flag', 'burst', 'dS', 'dE']);
+  const availableParams = Array.from(allParams).filter(p => !EXCLUDE.has(p)).sort();
+
+  if (availableParams.length === 0) {
+    el.innerHTML = '<div class="empty-state">No parameter data available</div>';
+    return;
+  }
+
+  // Initialize selection: default to params that have EBE data
+  if (state.parmPlotParams.size === 0 || !state._parmPlotPhase || state._parmPlotPhase !== state.activePhase) {
+    state.parmPlotParams.clear();
+    const ebeParams = new Set();
+    models.forEach(m => { if (m.ebe) Object.keys(m.ebe).forEach(k => ebeParams.add(k)); });
+    ebeParams.forEach(p => { if (!EXCLUDE.has(p)) state.parmPlotParams.add(p); });
+    state._parmPlotPhase = state.activePhase;
+  }
+
+  // Compute stable label prefix from ALL models in phase
+  const allPhaseNames = getModelsForPhase(state.activePhase).map(m => m.name);
+  const phasePrefix = longestCommonPrefix(allPhaseNames);
+  const labelStripLen = phasePrefix.includes('_') ? phasePrefix.lastIndexOf('_') + 1 : 0;
+
+  // Parameter toggles
+  let html = '<div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">';
+  html += '<span style="font-size:12px; font-weight:600; color:var(--text-muted); margin-right:4px;">Parameters:</span>';
+  availableParams.forEach(pname => {
+    const checked = state.parmPlotParams.has(pname) ? 'checked' : '';
+    html += `<label style="font-size:12px; display:flex; align-items:center; gap:3px; cursor:pointer;">
+      <input type="checkbox" ${checked} onchange="toggleParmPlotParam('${pname}')"> ${esc(pname)}</label>`;
+  });
+  html += '</div>';
+
+  // Legend
+  html += '<div class="violin-legend">';
+  models.forEach((m, i) => {
+    html += `<div class="violin-legend-item">
+      <div class="violin-legend-swatch" style="background:${MODEL_COLORS[i % MODEL_COLORS.length]}; border:1px solid ${MODEL_COLORS_SOLID[i % MODEL_COLORS_SOLID.length]}"></div>
+      <span>${esc(m.name)}</span></div>`;
+  });
+  html += '</div>';
+
+  // Get selected params
+  const selectedParams = availableParams.filter(p => state.parmPlotParams.has(p));
+
+  // One canvas per selected parameter
+  html += '<div class="violin-grid">';
+  selectedParams.forEach(pname => {
+    const canvasId = 'violin-' + pname.replace(/[^a-zA-Z0-9]/g, '_');
+    html += `<div class="violin-panel"><h4>${esc(pname)}_mode</h4><canvas id="${canvasId}"></canvas></div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+
+  // Draw each violin panel
+  selectedParams.forEach(pname => {
+    const canvasId = 'violin-' + pname.replace(/[^a-zA-Z0-9]/g, '_');
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    // Collect data series: include model if it has the _pop param
+    const popKey = pname + '_pop';
+    const series = [];
+    models.forEach((m, i) => {
+      const popParam = m.params[popKey];
+      const hasParam = popParam !== undefined;
+      if (!hasParam) return; // Model doesn't have this param at all — skip
+      const popEst = (popParam && popParam.value !== null) ? popParam.value : null;
+      const ebeData = (m.ebe && m.ebe[pname] && m.ebe[pname].length > 0) ? m.ebe[pname] : null;
+      series.push({ name: m.name, data: ebeData, colorIdx: i, popEst });
+    });
+    if (series.length === 0) return;
+    drawViolin(canvas, series, pname, labelStripLen);
+  });
+}
+
+function toggleParmPlotParam(pname) {
+  if (state.parmPlotParams.has(pname)) state.parmPlotParams.delete(pname);
+  else state.parmPlotParams.add(pname);
+  renderFigures(getSelectedModels());
+}
+
+function drawViolin(canvas, series, paramName, labelStripLen) {
+  const dpr = window.devicePixelRatio || 1;
+  const containerW = canvas.parentElement ? canvas.parentElement.clientWidth - 20 : 400;
+  const W = Math.max(containerW, 200);
+  const H = Math.round(W * 0.85);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const margin = { top: 10, right: 20, bottom: 90, left: 55 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  // Always work in log10 space — transform all values
+  const allLog = series.flatMap(s => {
+    const vals = [];
+    if (s.data) s.data.filter(v => v > 0).forEach(v => vals.push(Math.log10(v)));
+    if (s.popEst !== null && s.popEst !== undefined && s.popEst > 0) vals.push(Math.log10(s.popEst));
+    return vals;
+  });
+  if (allLog.length === 0) return;
+  const logMin = Math.min(...allLog);
+  const logMax = Math.max(...allLog);
+  const logPad = (logMax - logMin) * 0.08 || 0.5;
+  const yMin = Math.floor(logMin - logPad);
+  const yMax = Math.ceil(logMax + logPad);
+
+  // Map log10 value to pixel y
+  const yToPixel = logV => margin.top + plotH * (1 - (logV - yMin) / (yMax - yMin));
+
+  // Tick values (integer powers of 10)
+  const tickValues = [];
+  for (let e = yMin; e <= yMax; e++) tickValues.push(e);
+
+  const n = series.length;
+  const violinW = Math.min(plotW / n * 0.75, 60);
+  const gap = plotW / n;
+
+  // Background
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#eee';
+  ctx.lineWidth = 1;
+  tickValues.forEach(e => {
+    const y = yToPixel(e);
+    if (y >= margin.top && y <= margin.top + plotH) {
+      ctx.beginPath();
+      ctx.moveTo(margin.left, y);
+      ctx.lineTo(margin.left + plotW, y);
+      ctx.stroke();
+    }
+  });
+
+  // Y axis labels (show as 10^e)
+  ctx.fillStyle = '#586069';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  tickValues.forEach(e => {
+    const y = yToPixel(e);
+    if (y >= margin.top && y <= margin.top + plotH) {
+      const v = Math.pow(10, e);
+      let label;
+      if (e >= 0 && e <= 4) label = v.toFixed(0);
+      else if (e >= -4 && e < 0) label = v.toFixed(Math.abs(e));
+      else label = '1e' + e;
+      ctx.fillText(label, margin.left - 6, y);
+    }
+  });
+
+  // Clip to plot area so violins don't overflow
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(margin.left, margin.top, plotW, plotH);
+  ctx.clip();
+
+  // Draw each violin (or just pop dot if no EBE data)
+  series.forEach((s, i) => {
+    const cx = margin.left + gap * i + gap / 2;
+    const data = s.data ? s.data.filter(v => v > 0).map(v => Math.log10(v)).sort((a, b) => a - b) : [];
+    if (data.length === 0 && (s.popEst === null || s.popEst === undefined || s.popEst <= 0)) return;
+
+    const halfW = violinW / 2;
+
+    // Draw violin + median if we have EBE data
+    if (data.length > 0) {
+      const kde = kernelDensity(data, 40);
+      const maxDensity = Math.max(...kde.map(p => p[1]));
+      if (maxDensity > 0) {
+        ctx.fillStyle = MODEL_COLORS[s.colorIdx % MODEL_COLORS.length];
+        ctx.strokeStyle = MODEL_COLORS_SOLID[s.colorIdx % MODEL_COLORS_SOLID.length];
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let j = 0; j < kde.length; j++) {
+          const y = yToPixel(kde[j][0]);
+          const x = cx + (kde[j][1] / maxDensity) * halfW;
+          if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        for (let j = kde.length - 1; j >= 0; j--) {
+          const y = yToPixel(kde[j][0]);
+          const x = cx - (kde[j][1] / maxDensity) * halfW;
+          ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Median line
+        const median = data[Math.floor(data.length / 2)];
+        const medY = yToPixel(median);
+        ctx.strokeStyle = MODEL_COLORS_SOLID[s.colorIdx % MODEL_COLORS_SOLID.length];
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - halfW * 0.5, medY);
+        ctx.lineTo(cx + halfW * 0.5, medY);
+        ctx.stroke();
+      }
+    }
+
+    // Population estimate dot (black)
+    if (s.popEst !== null && s.popEst !== undefined && s.popEst > 0) {
+      const popLog = Math.log10(s.popEst);
+      if (popLog >= yMin && popLog <= yMax) {
+        const popY = yToPixel(popLog);
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(cx, popY, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
+  });
+  ctx.restore(); // Remove clip
+
+  // X axis labels (model names, rotated) — strip phase prefix
+  ctx.save();
+  ctx.fillStyle = '#586069';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  series.forEach((s, i) => {
+    const cx = margin.left + gap * i + gap / 2;
+    ctx.save();
+    ctx.translate(cx, margin.top + plotH + 8);
+    ctx.rotate(-Math.PI / 4);
+    let label = labelStripLen > 0 ? s.name.slice(labelStripLen) : s.name;
+    if (label.length > 25) label = label.slice(0, 22) + '...';
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+  });
+  ctx.restore();
+
+  // Border
+  ctx.strokeStyle = '#24292e';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+}
+
+// Gaussian kernel density estimation
+function kernelDensity(sortedData, nPoints) {
+  if (sortedData.length === 0) return [];
+  const min = sortedData[0];
+  const max = sortedData[sortedData.length - 1];
+  const range = max - min || 1;
+  // Silverman's rule of thumb for bandwidth
+  const n = sortedData.length;
+  const std = Math.sqrt(sortedData.reduce((s, v) => s + (v - sortedData.reduce((a,b)=>a+b,0)/n)**2, 0) / n) || range / 4;
+  const h = 1.06 * std * Math.pow(n, -0.2);
+  const pad = h * 2;
+  const step = (range + 2 * pad) / (nPoints - 1);
+  const start = min - pad;
+  const result = [];
+  for (let i = 0; i < nPoints; i++) {
+    const x = start + i * step;
+    let density = 0;
+    for (let j = 0; j < n; j++) {
+      const z = (x - sortedData[j]) / h;
+      density += Math.exp(-0.5 * z * z);
+    }
+    density /= (n * h * Math.sqrt(2 * Math.PI));
+    result.push([x, density]);
+  }
+  return result;
+}
+
+function longestCommonPrefix(strs) {
+  if (strs.length === 0) return '';
+  let prefix = strs[0];
+  for (let i = 1; i < strs.length; i++) {
+    while (strs[i].indexOf(prefix) !== 0) {
+      prefix = prefix.slice(0, -1);
+      if (prefix === '') return '';
+    }
+  }
+  return prefix;
+}
+
+function niceStep(range, targetTicks) {
+  const rough = range / targetTicks;
+  const exp = Math.floor(Math.log10(rough));
+  const frac = rough / Math.pow(10, exp);
+  let nice;
+  if (frac <= 1.5) nice = 1;
+  else if (frac <= 3.5) nice = 2;
+  else if (frac <= 7.5) nice = 5;
+  else nice = 10;
+  return nice * Math.pow(10, exp);
+}
+
+// ── Individual Fits tab ──────────────────────────────────────────────────
+function renderIndivFits(models) {
+  const el = document.getElementById('tab-indivfits');
+
+  // Collect all subject IDs across selected models (from observations)
+  const subjectSet = new Set();
+  models.forEach(m => {
+    if (m.indivObs) Object.keys(m.indivObs).forEach(s => subjectSet.add(s));
+    if (m.indivFits) Object.keys(m.indivFits).forEach(s => subjectSet.add(s));
+  });
+  if (subjectSet.size === 0) {
+    el.innerHTML = '<div class="empty-state">No individual fits data available</div>';
+    return;
+  }
+  // Sort subjects: try numeric, then alphabetical
+  const subjects = Array.from(subjectSet).sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.localeCompare(b);
+  });
+
+  // Compute label prefix stripping
+  const allPhaseNames = getModelsForPhase(state.activePhase).map(m => m.name);
+  const phasePrefix = longestCommonPrefix(allPhaseNames);
+  const labelStripLen = phasePrefix.includes('_') ? phasePrefix.lastIndexOf('_') + 1 : 0;
+
+  // Legend
+  let html = '<div class="violin-legend">';
+  models.forEach((m, i) => {
+    const label = labelStripLen > 0 ? m.name.slice(labelStripLen) : m.name;
+    html += `<div class="violin-legend-item">
+      <div class="violin-legend-swatch" style="background:${MODEL_COLORS_SOLID[i % MODEL_COLORS_SOLID.length]}; border:1px solid ${MODEL_COLORS_SOLID[i % MODEL_COLORS_SOLID.length]}"></div>
+      <span>${esc(label)}</span></div>`;
+  });
+  html += '</div>';
+
+  // Grid of canvases, one per subject
+  html += '<div class="violin-grid ifits-grid">';
+  subjects.forEach(sid => {
+    const canvasId = 'ifits-' + sid.replace(/[^a-zA-Z0-9]/g, '_');
+    html += `<div class="violin-panel"><h4>${esc(sid)}</h4><canvas id="${canvasId}"></canvas></div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+
+  // Find observations from any model in the phase (only one model stores them)
+  const allPhaseModels = getModelsForPhase(state.activePhase);
+  const phaseObs = {};  // subjectId -> [[time, y, censored], ...]
+  for (const m of allPhaseModels) {
+    if (m.indivObs) {
+      Object.keys(m.indivObs).forEach(sid => { if (!phaseObs[sid]) phaseObs[sid] = m.indivObs[sid]; });
+    }
+  }
+
+  // Draw each subject panel
+  subjects.forEach(sid => {
+    const canvasId = 'ifits-' + sid.replace(/[^a-zA-Z0-9]/g, '_');
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    drawIndivFitPanel(canvas, models, sid, phaseObs[sid] || null);
+  });
+}
+
+function drawIndivFitPanel(canvas, models, subjectId, obsData) {
+  const dpr = window.devicePixelRatio || 1;
+  // Size to fit the panel container
+  const containerW = canvas.parentElement.clientWidth - 12;
+  const W = Math.max(containerW, 160);
+  const H = Math.round(W * 0.7);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const margin = { top: 10, right: 15, bottom: 35, left: 45 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  // Collect all data to determine axis ranges
+  let allX = [], allY = [];
+  if (obsData) {
+    obsData.forEach(p => { allX.push(p[0]); allY.push(p[1]); });
+  }
+  // Fits per model
+  const fitSeries = [];
+  models.forEach((m, i) => {
+    if (m.indivFits && m.indivFits[subjectId]) {
+      const pts = m.indivFits[subjectId]; // [[time, pred], ...]
+      pts.forEach(p => { allX.push(p[0]); allY.push(p[1]); });
+      fitSeries.push({ pts, colorIdx: i });
+    }
+  });
+  if (allX.length === 0) return;
+
+  const xMin = Math.min(...allX);
+  const xMax = Math.max(...allX);
+  const yMin = Math.min(...allY);
+  const yMax = Math.max(...allY);
+  const xPad = (xMax - xMin) * 0.05 || 1;
+  const yPad = (yMax - yMin) * 0.08 || 0.5;
+  const xLo = xMin - xPad, xHi = xMax + xPad;
+  const yLo = yMin - yPad, yHi = yMax + yPad;
+
+  const xToPixel = v => margin.left + plotW * (v - xLo) / (xHi - xLo);
+  const yToPixel = v => margin.top + plotH * (1 - (v - yLo) / (yHi - yLo));
+
+  // Background
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#eee';
+  ctx.lineWidth = 0.5;
+  const yStep = niceStep(yHi - yLo, 4);
+  const yTickStart = Math.ceil(yLo / yStep) * yStep;
+  for (let v = yTickStart; v <= yHi; v += yStep) {
+    const y = yToPixel(v);
+    ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(margin.left + plotW, y); ctx.stroke();
+  }
+  const xStep = niceStep(xHi - xLo, 4);
+  const xTickStart = Math.ceil(xLo / xStep) * xStep;
+  for (let v = xTickStart; v <= xHi; v += xStep) {
+    const x = xToPixel(v);
+    ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
+  }
+
+  // Y axis labels
+  ctx.fillStyle = '#586069';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let v = yTickStart; v <= yHi; v += yStep) {
+    ctx.fillText(v.toFixed(1), margin.left - 4, yToPixel(v));
+  }
+  // X axis labels
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let v = xTickStart; v <= xHi; v += xStep) {
+    ctx.fillText(Math.round(v), xToPixel(v), margin.top + plotH + 4);
+  }
+
+  // Clip to plot area
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(margin.left, margin.top, plotW, plotH);
+  ctx.clip();
+
+  // Draw fit curves (lines)
+  fitSeries.forEach(s => {
+    ctx.strokeStyle = MODEL_COLORS_SOLID[s.colorIdx % MODEL_COLORS_SOLID.length];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const sorted = s.pts.slice().sort((a, b) => a[0] - b[0]);
+    sorted.forEach((p, j) => {
+      const x = xToPixel(p[0]), y = yToPixel(p[1]);
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+
+  // Draw observed data points (gray circles, open for censored)
+  if (obsData) {
+    obsData.forEach(p => {
+      const x = xToPixel(p[0]), y = yToPixel(p[1]);
+      const censored = p[2] === 1;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, 2 * Math.PI);
+      if (censored) {
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#888';
+        ctx.fill();
+      }
+    });
+  }
+  ctx.restore();
+
+  // Border
+  ctx.strokeStyle = '#24292e';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtNum(v) {
+  if (v === null || v === undefined) return '—';
+  return Number(v).toFixed(2);
+}
+
+function fmtLL(m, key) {
+  const v = getLLValue(m, key);
+  return v !== null ? v.toFixed(1) : '—';
+}
+
+function fmtParam(v) {
+  if (v === null || v === undefined) return '—';
+  const abs = Math.abs(v);
+  if (abs === 0) return '0';
+  if (abs < 0.001 || abs >= 100000) return v.toExponential(3);
+  if (abs < 1) return v.toPrecision(4);
+  return v.toFixed(4);
+}
+
+function findBest(models, metric) {
+  let best = null, bestVal = Infinity;
+  models.forEach(m => {
+    const v = getLLValue(m, metric);
+    if (v !== null && v < bestVal) { bestVal = v; best = m; }
+  });
+  return best;
+}
+
+function makeCard(label, value, sub) {
+  return `<div class="card"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div><div class="sub">${esc(sub)}</div></div>`;
+}
+
+function getErrorModel(m) {
+  const errParams = Object.values(m.params).filter(p => p.type === 'error');
+  if (errParams.length === 0) return '—';
+  return errParams.map(p => `${p.name}=${fmtParam(p.value)}`).join(', ');
+}
+
+function makeFlags(m) {
+  const parts = [];
+  if (m.n_high_rse > 0) parts.push(`<span class="warn">\u26A0 RSE \u00D7${m.n_high_rse}</span>`);
+  if (m.n_high_shrink > 0) parts.push(`<span style="color:var(--amber)">\u2191 shrink \u00D7${m.n_high_shrink}</span>`);
+  return parts.join(' ') || '—';
+}
+
+function makeNotes(m) {
+  const fn = Array.isArray(m.fixed_names) ? m.fixed_names : [];
+  if (fn.length === 0) return '';
+  // Only show fixed-effect params (not omega/corr/error)
+  const fe = fn.filter(n => !n.startsWith('omega_') && !n.startsWith('corr_') && n !== 'a' && n !== 'b');
+  if (fe.length === 0) return '';
+  return 'Fixed: ' + fe.join(', ');
+}
+
+function deltaEvidence(d) {
+  if (d < 2)  return { label: 'Negligible', cls: 'evidence-negligible' };
+  if (d < 6)  return { label: 'Positive', cls: 'evidence-positive' };
+  if (d < 10) return { label: 'Strong', cls: 'evidence-strong' };
+  return { label: 'Very strong', cls: 'evidence-vstrong' };
+}
+
+// ── Diagnostics tab (Obs vs Pred scatter) ──────────────────────────────────
+if (!state.diagView) state.diagView = 'ipred'; // 'ipred' or 'popPred'
+
+function renderDiagnostics(models) {
+  const el = document.getElementById('tab-diagnostics');
+
+  // Compute label prefix
+  const allPhaseNames = getModelsForPhase(state.activePhase).map(m => m.name);
+  const phasePrefix = longestCommonPrefix(allPhaseNames);
+  const labelStripLen = phasePrefix.includes('_') ? phasePrefix.lastIndexOf('_') + 1 : 0;
+
+  // Toggle bar
+  let html = '<div style="margin-bottom:10px; display:flex; gap:4px; align-items:center;">';
+  html += `<button class="param-view-btn ${state.diagView === 'ipred' ? 'active' : ''}" onclick="state.diagView='ipred'; renderDiagnostics(getSelectedModels())">IPRED</button>`;
+  html += `<button class="param-view-btn ${state.diagView === 'popPred' ? 'active' : ''}" onclick="state.diagView='popPred'; renderDiagnostics(getSelectedModels())">Pop Pred</button>`;
+  html += '</div>';
+
+  // One canvas per model
+  html += '<div class="violin-grid">';
+  models.forEach(m => {
+    const label = labelStripLen > 0 ? m.name.slice(labelStripLen) : m.name;
+    const canvasId = 'diag-' + m.id.replace(/[^a-zA-Z0-9]/g, '_');
+    html += `<div class="violin-panel"><h4>${esc(label)}</h4><canvas id="${canvasId}"></canvas></div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+
+  // Draw each scatter
+  models.forEach(m => {
+    const canvasId = 'diag-' + m.id.replace(/[^a-zA-Z0-9]/g, '_');
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !m.obsVsPred || !m.obsVsPred.y) return;
+    drawDiagScatter(canvas, m.obsVsPred, state.diagView);
+  });
+}
+
+function drawDiagScatter(canvas, data, mode) {
+  const dpr = window.devicePixelRatio || 1;
+  const containerW = canvas.parentElement ? canvas.parentElement.clientWidth - 20 : 400;
+  const W = Math.max(containerW, 200);
+  const H = W; // square
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const margin = { top: 10, right: 15, bottom: 40, left: 50 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  const obs = data.y;
+  const pred = mode === 'ipred' ? data.ipred : data.popPred;
+  const ids = data.id;
+  if (!obs || !pred || obs.length === 0) return;
+
+  // Compute axis range (shared for both axes, square)
+  const allVals = obs.concat(pred).filter(v => v !== null && !isNaN(v));
+  if (allVals.length === 0) return;
+  let lo = Math.min(...allVals);
+  let hi = Math.max(...allVals);
+  const pad = (hi - lo) * 0.05 || 0.5;
+  lo -= pad;
+  hi += pad;
+
+  const toX = v => margin.left + plotW * (v - lo) / (hi - lo);
+  const toY = v => margin.top + plotH * (1 - (v - lo) / (hi - lo));
+
+  // Background
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines & axis labels
+  const range = hi - lo;
+  const rawStep = range / 6;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const niceStep = [1, 2, 5, 10].map(m => m * mag).find(s => s >= rawStep) || rawStep;
+  const firstTick = Math.ceil(lo / niceStep) * niceStep;
+
+  ctx.strokeStyle = '#eee';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = '#586069';
+  ctx.font = '11px -apple-system, sans-serif';
+
+  for (let t = firstTick; t <= hi; t += niceStep) {
+    const x = toX(t);
+    const y = toY(t);
+    // Vertical grid
+    ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
+    // Horizontal grid
+    ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(margin.left + plotW, y); ctx.stroke();
+    // X labels
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(fmtAxis(t), x, margin.top + plotH + 4);
+    // Y labels
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(fmtAxis(t), margin.left - 6, y);
+  }
+
+  // Plot border
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+
+  // Identity line (dashed)
+  ctx.save();
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(toX(lo), toY(lo));
+  ctx.lineTo(toX(hi), toY(hi));
+  ctx.stroke();
+  ctx.restore();
+
+  // Clip to plot area
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(margin.left, margin.top, plotW, plotH);
+  ctx.clip();
+
+  // Assign colors per subject
+  const uniqueIds = [...new Set(ids)];
+  const SCATTER_COLORS = [
+    '#4682B4','#E8912D','#2CA02C','#D62728','#9467BD',
+    '#8C564B','#E377C2','#7F7F7F','#BCBD22','#17BECF',
+    '#FF6B6B','#4ECDC4','#556270','#C7F464','#FF9F1C'
+  ];
+
+  // Draw points
+  for (let i = 0; i < obs.length; i++) {
+    const o = obs[i];
+    const p = pred[i];
+    if (o === null || p === null || isNaN(o) || isNaN(p)) continue;
+    const colorIdx = uniqueIds.indexOf(ids[i]) % SCATTER_COLORS.length;
+    ctx.fillStyle = SCATTER_COLORS[colorIdx];
+    ctx.beginPath();
+    ctx.arc(toX(p), toY(o), 3, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  // Axis titles
+  ctx.fillStyle = '#333';
+  ctx.font = '12px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(mode === 'ipred' ? 'Individual Prediction' : 'Population Prediction', margin.left + plotW / 2, H - 4);
+  ctx.save();
+  ctx.translate(12, margin.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Observed', 0, 0);
+  ctx.restore();
+}
+
+function fmtAxis(v) {
+  if (Math.abs(v) >= 1000 || (Math.abs(v) < 0.01 && v !== 0)) return v.toExponential(1);
+  if (v === Math.floor(v)) return v.toFixed(0);
+  return v.toPrecision(3);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(function init() {
+  const phases = getPhases();
+  if (phases.length > 0) {
+    state.activePhase = phases[0][0];
+    getModelsForPhase(state.activePhase).forEach(m => state.selected.add(m.id));
+  }
+  renderPhaseTabs();
+  renderSidebar();
+  renderContent();
+})();
+</script>
+</body>
+</html>
