@@ -27,3 +27,13 @@ Thumbs.db
 data-raw/*.html
 *_cache/
 .smbdelete*
+
+# Monolix large output — not needed by the dashboard
+.Internals/
+History/
+predictions.txt
+FisherInformation/
+Tests/
+
+# Generated test output
+TEST/

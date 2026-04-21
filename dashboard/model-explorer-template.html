@@ -786,7 +786,7 @@ function renderFigures(models) {
     if (m.ebe) Object.keys(m.ebe).forEach(k => allParams.add(k));
   });
   // Exclude non-interesting params
-  const EXCLUDE = new Set(['k', 'rebound_flag', 'burst', 'dS', 'dE']);
+  const EXCLUDE = new Set(['k', 'rebound_flag', 'burst', 'dS', 'dE', '_ids']);
   const availableParams = Array.from(allParams).filter(p => !EXCLUDE.has(p)).sort();
 
   if (availableParams.length === 0) {
@@ -798,7 +798,14 @@ function renderFigures(models) {
   if (state.parmPlotParams.size === 0 || !state._parmPlotPhase || state._parmPlotPhase !== state.activePhase) {
     state.parmPlotParams.clear();
     const ebeParams = new Set();
-    models.forEach(m => { if (m.ebe) Object.keys(m.ebe).forEach(k => ebeParams.add(k)); });
+    models.forEach(m => {
+      if (m.ebe) {
+        Object.keys(m.ebe).forEach(k => {
+          // Only add actual parameters, exclude metadata like _ids
+          if (k !== '_ids') ebeParams.add(k);
+        });
+      }
+    });
     ebeParams.forEach(p => { if (!EXCLUDE.has(p)) state.parmPlotParams.add(p); });
     state._parmPlotPhase = state.activePhase;
   }
@@ -808,8 +815,15 @@ function renderFigures(models) {
   const phasePrefix = longestCommonPrefix(allPhaseNames);
   const labelStripLen = phasePrefix.includes('_') ? phasePrefix.lastIndexOf('_') + 1 : 0;
 
+  // View toggle (Plot vs Data)
+  if (!state.parmPlotView) state.parmPlotView = 'plot';
+  let html = '<div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">';
+  html += `<button class="param-view-btn ${state.parmPlotView === 'plot' ? 'active' : ''}" onclick="state.parmPlotView='plot'; renderFigures(getSelectedModels())">Plot</button>`;
+  html += `<button class="param-view-btn ${state.parmPlotView === 'data' ? 'active' : ''}" onclick="state.parmPlotView='data'; renderFigures(getSelectedModels())">Data</button>`;
+  html += '</div>';
+
   // Parameter toggles
-  let html = '<div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">';
+  html += '<div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">';
   html += '<span style="font-size:12px; font-weight:600; color:var(--text-muted); margin-right:4px;">Parameters:</span>';
   availableParams.forEach(pname => {
     const checked = state.parmPlotParams.has(pname) ? 'checked' : '';
@@ -830,34 +844,73 @@ function renderFigures(models) {
   // Get selected params
   const selectedParams = availableParams.filter(p => state.parmPlotParams.has(p));
 
-  // One canvas per selected parameter
-  html += '<div class="violin-grid">';
-  selectedParams.forEach(pname => {
-    const canvasId = 'violin-' + pname.replace(/[^a-zA-Z0-9]/g, '_');
-    html += `<div class="violin-panel"><h4>${esc(pname)}_mode</h4><canvas id="${canvasId}"></canvas></div>`;
-  });
-  html += '</div>';
+  if (state.parmPlotView === 'data') {
+    // Data table view
+    html += '<div style="overflow-x:auto;"><table style="font-size:12px; border-collapse:collapse;">';
+    html += '<thead><tr><th style="border:1px solid #ddd; padding:4px; text-align:left;">Model</th><th style="border:1px solid #ddd; padding:4px; text-align:left;">ID</th>';
+    selectedParams.forEach(pname => {
+      html += `<th style="border:1px solid #ddd; padding:4px; text-align:center;">${esc(pname)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    models.forEach((m, mi) => {
+      if (!m.ebe) return;
+      // Use _ids if available, otherwise derive from first param
+      const ids = m.ebe._ids || (selectedParams.length > 0 && m.ebe[selectedParams[0]] ?
+        Array.from({length: m.ebe[selectedParams[0]].length}, (_, i) => String(i+1)) : null);
+      if (!ids || ids.length === 0) return;
+      const numSubjects = ids.length;
+
+      ids.forEach((id, sidx) => {
+        html += `<tr style="${sidx % 2 === 0 ? 'background:#f9f9f9;' : ''}">`;
+        if (sidx === 0) {
+          html += `<td style="border:1px solid #ddd; padding:4px; font-weight:600; vertical-align:top;" rowspan="${numSubjects}">${esc(m.name)}</td>`;
+        }
+        html += `<td style="border:1px solid #ddd; padding:4px;">${esc(id)}</td>`;
+        selectedParams.forEach(pname => {
+          let val = '—';
+          if (m.ebe[pname] && m.ebe[pname][sidx] !== undefined && m.ebe[pname][sidx] !== null) {
+            val = fmtParam(m.ebe[pname][sidx]);
+          }
+          html += `<td style="border:1px solid #ddd; padding:4px; text-align:center;">${val}</td>`;
+        });
+        html += '</tr>';
+      });
+    });
+
+    html += '</tbody></table></div>';
+  } else {
+    // Plot view
+    html += '<div class="violin-grid">';
+    selectedParams.forEach(pname => {
+      const canvasId = 'violin-' + pname.replace(/[^a-zA-Z0-9]/g, '_');
+      html += `<div class="violin-panel"><h4>${esc(pname)}_mode</h4><canvas id="${canvasId}"></canvas></div>`;
+    });
+    html += '</div>';
+  }
+
   el.innerHTML = html;
 
-  // Draw each violin panel
-  selectedParams.forEach(pname => {
-    const canvasId = 'violin-' + pname.replace(/[^a-zA-Z0-9]/g, '_');
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    // Collect data series: include model if it has the _pop param
-    const popKey = pname + '_pop';
-    const series = [];
-    models.forEach((m, i) => {
-      const popParam = m.params[popKey];
-      const hasParam = popParam !== undefined;
-      if (!hasParam) return; // Model doesn't have this param at all — skip
-      const popEst = (popParam && popParam.value !== null) ? popParam.value : null;
-      const ebeData = (m.ebe && m.ebe[pname] && m.ebe[pname].length > 0) ? m.ebe[pname] : null;
-      series.push({ name: m.name, data: ebeData, colorIdx: i, popEst });
+  // Draw each violin panel (only in plot view)
+  if (state.parmPlotView === 'plot') {
+    selectedParams.forEach(pname => {
+      const canvasId = 'violin-' + pname.replace(/[^a-zA-Z0-9]/g, '_');
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const popKey = pname + '_pop';
+      const series = [];
+      models.forEach((m, i) => {
+        const popParam = m.params[popKey];
+        const hasParam = popParam !== undefined;
+        if (!hasParam) return;
+        const popEst = (popParam && popParam.value !== null) ? popParam.value : null;
+        const ebeData = (m.ebe && m.ebe[pname] && m.ebe[pname].length > 0) ? m.ebe[pname] : null;
+        series.push({ name: m.name, data: ebeData, colorIdx: i, popEst });
+      });
+      if (series.length === 0) return;
+      drawViolin(canvas, series, pname, labelStripLen);
     });
-    if (series.length === 0) return;
-    drawViolin(canvas, series, pname, labelStripLen);
-  });
+  }
 }
 
 function toggleParmPlotParam(pname) {
@@ -950,7 +1003,11 @@ function drawViolin(canvas, series, paramName, labelStripLen) {
   // Draw each violin (or just pop dot if no EBE data)
   series.forEach((s, i) => {
     const cx = margin.left + gap * i + gap / 2;
-    const data = s.data ? s.data.filter(v => v > 0).map(v => Math.log10(v)).sort((a, b) => a - b) : [];
+    const data = s.data ? s.data
+      .map(item => typeof item === 'object' ? item.value : item)
+      .filter(v => v > 0)
+      .map(v => Math.log10(v))
+      .sort((a, b) => a - b) : [];
     if (data.length === 0 && (s.popEst === null || s.popEst === undefined || s.popEst <= 0)) return;
 
     const halfW = violinW / 2;
@@ -990,7 +1047,26 @@ function drawViolin(canvas, series, paramName, labelStripLen) {
       }
     }
 
-    // Population estimate dot (black)
+    // Individual EBE points (jittered, gray for contrast)
+    if (s.data && s.data.length > 0) {
+      ctx.fillStyle = '#555'; // dark gray for contrast against violin
+      ctx.globalAlpha = 0.8;
+      const jitterW = violinW * 0.35; // jitter within ~35% of violin width
+      for (let j = 0; j < s.data.length; j++) {
+        const logVal = Math.log10(s.data[j]);
+        if (logVal >= yMin && logVal <= yMax) {
+          const y = yToPixel(logVal);
+          const jitter = (Math.random() - 0.5) * jitterW;
+          const x = cx + jitter;
+          ctx.beginPath();
+          ctx.arc(x, y, 2, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Population estimate dot (black, larger)
     if (s.popEst !== null && s.popEst !== undefined && s.popEst > 0) {
       const popLog = Math.log10(s.popEst);
       if (popLog >= yMin && popLog <= yMax) {
@@ -1079,8 +1155,29 @@ function niceStep(range, targetTicks) {
 }
 
 // ── Individual Fits tab ──────────────────────────────────────────────────
+// Initialize indiv fits state from DASHBOARD_META
+function getIndivFitsSettings() {
+  const meta = window.DASHBOARD_META || {};
+  const ps = (meta.phaseSettings || {})[state.activePhase] || {};
+  if (!state._ifitsInit || state._ifitsPhase !== state.activePhase) {
+    state.ifitsLogY = ps.logY || false;
+    state.ifitsDataIsLog = ps.dataIsLog !== undefined ? ps.dataIsLog : true;
+    state.ifitsLLOQ = ps.lloq || 0;
+    state.ifitsYLimitLower = ps.yLimitLower || 0;
+    state._ifitsInit = true;
+    state._ifitsPhase = state.activePhase;
+  }
+  return {
+    logY: state.ifitsLogY,
+    dataIsLog: state.ifitsDataIsLog,
+    lloq: state.ifitsLLOQ,
+    yLimitLower: state.ifitsYLimitLower
+  };
+}
+
 function renderIndivFits(models) {
   const el = document.getElementById('tab-indivfits');
+  const settings = getIndivFitsSettings();
 
   // Collect all subject IDs across selected models (from observations)
   const subjectSet = new Set();
@@ -1092,7 +1189,6 @@ function renderIndivFits(models) {
     el.innerHTML = '<div class="empty-state">No individual fits data available</div>';
     return;
   }
-  // Sort subjects: try numeric, then alphabetical
   const subjects = Array.from(subjectSet).sort((a, b) => {
     const na = parseFloat(a), nb = parseFloat(b);
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
@@ -1104,8 +1200,35 @@ function renderIndivFits(models) {
   const phasePrefix = longestCommonPrefix(allPhaseNames);
   const labelStripLen = phasePrefix.includes('_') ? phasePrefix.lastIndexOf('_') + 1 : 0;
 
+  // Controls bar
+  let html = '<div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; font-size:12px;">';
+  // Log Y toggle — disabled when data is already log-transformed (prevents double-logging)
+  if (settings.allowLogToggle) {
+    html += `<label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+      <input type="checkbox" ${settings.logY ? 'checked' : ''}
+        onchange="state.ifitsLogY = this.checked; renderIndivFits(getSelectedModels())"> Log Y</label>`;
+  } else if (settings.dataIsLog) {
+    html += '<span style="color:#999; font-size:12px;">Y axis: log\u2081\u2080 (data scale)</span>';
+  }
+  // LLOQ input (natural scale)
+  html += `<label style="display:flex; align-items:center; gap:4px;">
+    LLOQ: <input type="number" value="${settings.lloq}" step="any" style="width:70px; font-size:12px; padding:2px 4px; border:1px solid #ccc; border-radius:3px;"
+      onchange="state.ifitsLLOQ = +this.value; renderIndivFits(getSelectedModels())"></label>`;
+  // Y-limit lower input (natural scale)
+  html += `<label style="display:flex; align-items:center; gap:4px;">
+    Y min: <input type="number" value="${settings.yLimitLower}" step="any" style="width:70px; font-size:12px; padding:2px 4px; border:1px solid #ccc; border-radius:3px;"
+      onchange="state.ifitsYLimitLower = +this.value; renderIndivFits(getSelectedModels())"></label>`;
+  const scaleNote = settings.dataIsLog ? 'on log\u2081\u2080 scale' : 'on natural scale';
+  html += `<span style="color:#888; font-size:11px;">(LLOQ &amp; Y min ${scaleNote})</span>`;
+  // Shared Y axis toggle
+  const sharedChecked = state.ifitsSharedY ? 'checked' : '';
+  html += `<label style="display:flex; align-items:center; gap:4px; cursor:pointer; margin-left:8px;">
+    <input type="checkbox" ${sharedChecked}
+      onchange="state.ifitsSharedY = this.checked; renderIndivFits(getSelectedModels())"> Shared Y axis</label>`;
+  html += '</div>';
+
   // Legend
-  let html = '<div class="violin-legend">';
+  html += '<div class="violin-legend">';
   models.forEach((m, i) => {
     const label = labelStripLen > 0 ? m.name.slice(labelStripLen) : m.name;
     html += `<div class="violin-legend-item">
@@ -1123,12 +1246,27 @@ function renderIndivFits(models) {
   html += '</div>';
   el.innerHTML = html;
 
-  // Find observations from any model in the phase (only one model stores them)
-  const allPhaseModels = getModelsForPhase(state.activePhase);
-  const phaseObs = {};  // subjectId -> [[time, y, censored], ...]
-  for (const m of allPhaseModels) {
+  // Find observations from selected models only (not all phase models)
+  const phaseObs = {};
+  for (const m of models) {
     if (m.indivObs) {
       Object.keys(m.indivObs).forEach(sid => { if (!phaseObs[sid]) phaseObs[sid] = m.indivObs[sid]; });
+    }
+  }
+
+  // Compute shared Y range if enabled
+  let sharedYRange = null;
+  if (state.ifitsSharedY) {
+    let globalYs = [];
+    subjects.forEach(sid => {
+      const obs = phaseObs[sid];
+      if (obs) obs.forEach(p => globalYs.push(p[1]));
+      models.forEach(m => {
+        if (m.indivFits && m.indivFits[sid]) m.indivFits[sid].forEach(p => globalYs.push(p[1]));
+      });
+    });
+    if (globalYs.length > 0) {
+      sharedYRange = [Math.min(...globalYs), Math.max(...globalYs)];
     }
   }
 
@@ -1137,13 +1275,12 @@ function renderIndivFits(models) {
     const canvasId = 'ifits-' + sid.replace(/[^a-zA-Z0-9]/g, '_');
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    drawIndivFitPanel(canvas, models, sid, phaseObs[sid] || null);
+    drawIndivFitPanel(canvas, models, sid, phaseObs[sid] || null, settings, sharedYRange);
   });
 }
 
-function drawIndivFitPanel(canvas, models, subjectId, obsData) {
+function drawIndivFitPanel(canvas, models, subjectId, obsData, settings, sharedYRange) {
   const dpr = window.devicePixelRatio || 1;
-  // Size to fit the panel container
   const containerW = canvas.parentElement.clientWidth - 12;
   const W = Math.max(containerW, 160);
   const H = Math.round(W * 0.7);
@@ -1158,16 +1295,23 @@ function drawIndivFitPanel(canvas, models, subjectId, obsData) {
   const plotW = W - margin.left - margin.right;
   const plotH = H - margin.top - margin.bottom;
 
+  const useLogAxis = settings.logY && !settings.dataIsLog;
+  // dataIsLog: data is already log10-transformed → linear axis of log values
+  // useLogAxis: data is natural scale → log10 transform for display
+
+  // LLOQ and yLimitLower are on the DATA scale (set in R PLOT_DEFAULTS)
+  const lloqDataScale = settings.lloq;
+  const yLimitDataScale = settings.yLimitLower;
+
   // Collect all data to determine axis ranges
   let allX = [], allY = [];
   if (obsData) {
     obsData.forEach(p => { allX.push(p[0]); allY.push(p[1]); });
   }
-  // Fits per model
   const fitSeries = [];
   models.forEach((m, i) => {
     if (m.indivFits && m.indivFits[subjectId]) {
-      const pts = m.indivFits[subjectId]; // [[time, pred], ...]
+      const pts = m.indivFits[subjectId];
       pts.forEach(p => { allX.push(p[0]); allY.push(p[1]); });
       fitSeries.push({ pts, colorIdx: i });
     }
@@ -1176,15 +1320,53 @@ function drawIndivFitPanel(canvas, models, subjectId, obsData) {
 
   const xMin = Math.min(...allX);
   const xMax = Math.max(...allX);
-  const yMin = Math.min(...allY);
-  const yMax = Math.max(...allY);
   const xPad = (xMax - xMin) * 0.05 || 1;
-  const yPad = (yMax - yMin) * 0.08 || 0.5;
   const xLo = xMin - xPad, xHi = xMax + xPad;
-  const yLo = yMin - yPad, yHi = yMax + yPad;
-
   const xToPixel = v => margin.left + plotW * (v - xLo) / (xHi - xLo);
-  const yToPixel = v => margin.top + plotH * (1 - (v - yLo) / (yHi - yLo));
+
+  // Y axis setup depends on whether we use log scale
+  let yLo, yHi, yToPixel, yTicks, yTickLabel;
+
+  if (useLogAxis) {
+    // Natural-scale data, log10 axis
+    const rangeY = sharedYRange ? sharedYRange : [Math.min(...allY), Math.max(...allY)];
+    const posY = [rangeY[0], rangeY[1]].filter(v => v > 0);
+    if (posY.length === 0) return;
+    let logMin = Math.log10(Math.min(...posY));
+    let logMax = Math.log10(Math.max(...posY));
+    if (settings.yLimitLower > 0) logMin = Math.min(logMin, Math.log10(settings.yLimitLower));
+    const logPad = (logMax - logMin) * 0.05 || 0.5;
+    const logLo = Math.floor(logMin - logPad);
+    const logHi = Math.ceil(logMax + logPad);
+    yLo = logLo; yHi = logHi;
+    yToPixel = v => {
+      const lv = v > 0 ? Math.log10(v) : logLo - 1;
+      return margin.top + plotH * (1 - (lv - logLo) / (logHi - logLo));
+    };
+    yTicks = [];
+    for (let e = logLo; e <= logHi; e++) yTicks.push(Math.pow(10, e));
+    yTickLabel = v => {
+      const e = Math.log10(v);
+      if (e >= 0 && e <= 4) return v.toFixed(0);
+      if (e >= -4 && e < 0) return v.toFixed(Math.abs(Math.round(e)));
+      return '1e' + Math.round(e);
+    };
+  } else {
+    // Linear axis (data may already be log10-transformed)
+    let dataYMin = sharedYRange ? sharedYRange[0] : Math.min(...allY);
+    let dataYMax = sharedYRange ? sharedYRange[1] : Math.max(...allY);
+    // Apply y-limit on data scale
+    if (yLimitDataScale > 0 && yLimitDataScale < dataYMin) dataYMin = yLimitDataScale;
+    const yPad = (dataYMax - dataYMin) * 0.08 || 0.5;
+    yLo = dataYMin - yPad;
+    yHi = dataYMax + yPad;
+    yToPixel = v => margin.top + plotH * (1 - (v - yLo) / (yHi - yLo));
+    const yStep = niceStep(yHi - yLo, 4);
+    yTicks = [];
+    const yTickStart = Math.ceil(yLo / yStep) * yStep;
+    for (let v = yTickStart; v <= yHi; v += yStep) yTicks.push(v);
+    yTickLabel = v => v.toFixed(1);
+  }
 
   // Background
   ctx.fillStyle = '#fff';
@@ -1193,12 +1375,12 @@ function drawIndivFitPanel(canvas, models, subjectId, obsData) {
   // Grid lines
   ctx.strokeStyle = '#eee';
   ctx.lineWidth = 0.5;
-  const yStep = niceStep(yHi - yLo, 4);
-  const yTickStart = Math.ceil(yLo / yStep) * yStep;
-  for (let v = yTickStart; v <= yHi; v += yStep) {
-    const y = yToPixel(v);
-    ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(margin.left + plotW, y); ctx.stroke();
-  }
+  yTicks.forEach(v => {
+    const y = useLogAxis ? yToPixel(v) : yToPixel(v);
+    if (y >= margin.top && y <= margin.top + plotH) {
+      ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(margin.left + plotW, y); ctx.stroke();
+    }
+  });
   const xStep = niceStep(xHi - xLo, 4);
   const xTickStart = Math.ceil(xLo / xStep) * xStep;
   for (let v = xTickStart; v <= xHi; v += xStep) {
@@ -1211,9 +1393,12 @@ function drawIndivFitPanel(canvas, models, subjectId, obsData) {
   ctx.font = '10px -apple-system, sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
-  for (let v = yTickStart; v <= yHi; v += yStep) {
-    ctx.fillText(v.toFixed(1), margin.left - 4, yToPixel(v));
-  }
+  yTicks.forEach(v => {
+    const y = useLogAxis ? yToPixel(v) : yToPixel(v);
+    if (y >= margin.top && y <= margin.top + plotH) {
+      ctx.fillText(yTickLabel(v), margin.left - 4, y);
+    }
+  });
   // X axis labels
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -1227,7 +1412,23 @@ function drawIndivFitPanel(canvas, models, subjectId, obsData) {
   ctx.rect(margin.left, margin.top, plotW, plotH);
   ctx.clip();
 
-  // Draw fit curves (lines)
+  // LLOQ dashed line
+  if (settings.lloq > 0) {
+    const lloqY = useLogAxis ? yToPixel(settings.lloq) : yToPixel(lloqDataScale);
+    if (lloqY >= margin.top && lloqY <= margin.top + plotH) {
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(margin.left, lloqY);
+      ctx.lineTo(margin.left + plotW, lloqY);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Draw fit curves
   fitSeries.forEach(s => {
     ctx.strokeStyle = MODEL_COLORS_SOLID[s.colorIdx % MODEL_COLORS_SOLID.length];
     ctx.lineWidth = 1.5;
@@ -1240,7 +1441,7 @@ function drawIndivFitPanel(canvas, models, subjectId, obsData) {
     ctx.stroke();
   });
 
-  // Draw observed data points (gray circles, open for censored)
+  // Draw observed data points
   if (obsData) {
     obsData.forEach(p => {
       const x = xToPixel(p[0]), y = yToPixel(p[1]);

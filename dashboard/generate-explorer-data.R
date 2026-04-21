@@ -100,7 +100,6 @@ cat(sprintf("Found %d model runs\n", length(pop_files)))
 # ── Parse each model ────────────────────────────────────────────────────────
 models <- list()
 all_warnings <- list()
-obs_stored_for_phase <- character(0)  # Track which phases already have obs data
 
 for (pf in pop_files) {
   model_dir <- dirname(pf)
@@ -274,17 +273,43 @@ for (pf in pop_files) {
     if (!is.null(ebe_df)) {
       # Find _mode columns (individual parameter modes)
       mode_cols <- grep("_mode$", names(ebe_df), value = TRUE)
+
+      # Extract parameter names from _mode columns (e.g., "Bt0_mode" → "Bt0")
+      param_names <- sub("_mode$", "", mode_cols)
+
       # Only include parameters that have random effects (non-NaN shrinkage)
       re_params <- names(shrinkage)[sapply(shrinkage, function(s) !is.na(s$mode))]
-      for (mc in mode_cols) {
-        pname <- sub("_mode$", "", mc)
-        if (pname %in% re_params) {
-          vals <- suppressWarnings(as.numeric(ebe_df[[mc]]))
-          vals <- vals[!is.na(vals)]
-          if (length(vals) > 0) {
-            ebe[[pname]] <- vals
+
+      # Capture subject IDs from first mode column and populate ebe with parameter data
+      ebe_ids <- NULL
+      id_col <- if ("ID" %in% names(ebe_df)) "ID" else if ("id" %in% names(ebe_df)) "id" else NULL
+
+      for (i in seq_along(mode_cols)) {
+        mc <- mode_cols[i]
+        pname <- param_names[i]
+
+        # Extract numeric values from this mode column
+        vals <- suppressWarnings(as.numeric(ebe_df[[mc]]))
+        keep_idx <- !is.na(vals)
+
+        if (any(keep_idx)) {
+          # Capture IDs from first parameter with non-NA values
+          if (is.null(ebe_ids) && !is.null(id_col)) {
+            ebe_ids <- as.character(ebe_df[[id_col]][keep_idx])
           }
+          # Always store the mode data for parameters with any non-NA values
+          ebe[[pname]] <- vals[keep_idx]
         }
+      }
+
+      # Add IDs if we have any EBE data
+      if (!is.null(ebe_ids) && length(ebe_ids) > 0) {
+        ebe[["_ids"]] <- ebe_ids
+      }
+
+      # Warn if we expected EBE data but got none
+      if (length(ebe) == 0 && !is.null(ebe_df) && nrow(ebe_df) > 0) {
+        cat("  WARNING: EBE file exists but no valid _mode data found for", model_name, "\n")
       }
     }
   }
@@ -319,8 +344,8 @@ for (pf in pop_files) {
       }
     }
 
-    # Only store observations on the first model per phase to avoid redundancy
-    if (length(obs_files) > 0 && !(phase %in% obs_stored_for_phase)) {
+    # Load observations for this model (not phase-cached to avoid cross-phase contamination)
+    if (length(obs_files) > 0) {
       obs_df <- safe_read_csv(obs_files[1])
       if (!is.null(obs_df)) {
         obs_df$time <- as.numeric(obs_df$time)
@@ -336,7 +361,6 @@ for (pf in pop_files) {
             c(round(sub$time[i], 3), round(sub[[obs_col]][i], 4), sub$censored[i])
           })
         }
-        obs_stored_for_phase <- c(obs_stored_for_phase, phase)
       }
     }
   }
